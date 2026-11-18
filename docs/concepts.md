@@ -36,7 +36,38 @@
 
 ## Writing an entity store
 
-Most data sources don't expose an Observable of their entities. They raise events, call listeners, or update signals. `createEntityStore` turns such a source into an entity store. You give it two things:
+An entity store comes in one of two shapes. Both can add an optional `getEntities(type)`, a fast lookup for `store(type)`.
+
+| Shape | What it provides | Use it when |
+|---|---|---|
+| **Observable** `{ entities$ }` | An Observable that emits the full list of `{ entityType, entity }` pairs whenever it changes. | The source already gives you an Observable of the data: an NgRx `select`, a `BehaviorSubject` you maintain, a live query in RxDB or Apollo. The list is built anyway, so passing it on costs nothing extra. |
+| **Notifying** `{ changes$, entities() }` | An Observable that only says *something changed*, plus a function that reads the current entities. | The source raises events, calls listeners or updates signals without handing you the data, or building the list is expensive. Breeze's `EntityManager` is an example. |
+
+The difference shows when changes come in bursts. The service coalesces both shapes into one validation run per burst ([coalescing](#coalescing)), but it can only skip work it hasn't done yet:
+
+- An **Observable** store has already built a list for every emission before the service sees it. If a burst emits 500 lists, 499 of them are built and thrown away.
+- A **notifying** store's `changes$` emissions carry no data. The service calls `entities()` once per burst, after it has coalesced, so a burst of 500 events costs one read.
+
+So for an event- or signal-based source, don't turn it into an Observable store by calling a read function on every event (`events$.pipe(map(() => read()))`). Use the notifying shape instead. Keep the Observable shape for sources that already produce the list.
+
+```ts
+// Observable: the source already emits the data.
+const orderStore: EntityStore = {
+  entities$: ngrxStore.select(selectOrders).pipe(map((orders) => orders.map((entity) => ({ entityType: 'Order', entity })))),
+};
+
+// Notifying: the source only says that something changed.
+const cartStore: EntityStore = {
+  changes$: fromEvent(cart, 'change'),
+  entities: () => cart.items.map((entity) => ({ entityType: 'CartItem', entity })),
+};
+```
+
+For a fixed list, or an Observable of lists you already have, `entityStoreOf(listOrObservable)` creates the Observable shape.
+
+### `createEntityStore`
+
+Most sources that only signal changes don't expose an Observable at all. They raise events, call listeners, or update signals. `createEntityStore` builds a notifying store from such a source, without RxJS on your side. You give it two things:
 
 - `entities()`, which returns the current entities as `{ entityType, entity }` pairs;
 - `changes`, which tells the store when the source changed. This is a function that starts listening, calls `notify` on every change, and returns how to stop listening. It can return a function, an object with `unsubscribe()`, or nothing. An Observable works too.
@@ -56,7 +87,7 @@ const store = createEntityStore({
 
 For signal libraries whose `effect()` returns a disposer, such as Preact or Solid, `changes` is one line: `(notify) => effect(() => { items.value; notify(); })`. For Angular signals, use `signalEntityStore` from `@ideablade/validation/angular` ([angular.md](angular.md#validating-a-set-of-entities)).
 
-Don't batch the notifications yourself: the validation service coalesces them (next section). The store it returns has the `{ changes$, entities() }` shape, so the service reads `entities()` once per coalesced burst rather than once per change.
+Don't batch the notifications yourself: the validation service coalesces them ([coalescing](#coalescing)). `breezeEntityStore` and `signalEntityStore` are built on `createEntityStore` too.
 
 Without `getEntities`, `store(type)` in expressions and the `unique` validator filter the latest `entities()` snapshot.
 
