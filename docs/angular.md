@@ -1,6 +1,6 @@
 # Angular
 
-`@ideablade/validation/angular` provides standalone providers, injection tokens, signal helpers, reactive-forms validators and template-driven-forms directives. Tested with Angular 22; it works with Angular 17.1 and later (it needs `makeEnvironmentProviders`, `inject`, signal inputs and `@angular/core/rxjs-interop`). It also needs `@angular/forms`.
+`@ideablade/validation/angular` provides standalone providers, injection tokens, signal helpers, reactive-forms validators and template-driven-forms directives. Signal Forms support is in `@ideablade/validation/angular/signal-forms` ([below](#signal-forms)). Tested with Angular 22; it works with Angular 17.1 and later (it needs `makeEnvironmentProviders`, `inject`, signal inputs and `@angular/core/rxjs-interop`). It also needs `@angular/forms`.
 
 The library uses no decorators. Everything is functional DI, so it needs no Angular compiler step and is AOT/zoneless friendly. The two directives ship as partial declarations, the format Angular libraries publish, which the Angular CLI links when it builds your app.
 
@@ -48,7 +48,8 @@ Feature areas can add metadata with `provideValidationMetadata(featureMetadata)`
 | `provideExpressionScope(scope \| () => scope)` | Adds functions or values for expressions. |
 | `provideModelTypeResolvers(...resolvers)` | Adds model type resolvers (also `modelTypeResolvers` in `provideValidation`). |
 | `provideStoreResolvers(...resolvers)` | Adds store resolvers, which give `store(type)` and `unique` a store in forms (also `storeResolvers` in `provideValidation`). |
-| Tokens | `VALIDATION_METADATA`, `VALIDATOR_FACTORY`, `VALIDATOR_CONTEXT_PROVIDER`, `VALIDATION_EXPRESSION_SCOPE`, `VALIDATION_EXPRESSION_EVALUATOR`, `VALIDATION_SERVICE_OPTIONS`, `VALIDATION_MODEL_TYPE_RESOLVER`, `VALIDATION_STORE_RESOLVER`. |
+| `provideRuleSources(...sources)` | Adds rule sources for `from` references; a function may `inject()` (also `ruleSources` in `provideValidation`). |
+| Tokens | `VALIDATION_METADATA`, `VALIDATOR_FACTORY`, `VALIDATOR_CONTEXT_PROVIDER`, `VALIDATION_EXPRESSION_SCOPE`, `VALIDATION_EXPRESSION_EVALUATOR`, `VALIDATION_SERVICE_OPTIONS`, `VALIDATION_MODEL_TYPE_RESOLVER`, `VALIDATION_STORE_RESOLVER`, `VALIDATION_RULE_SOURCE`. |
 
 ## Using the service
 
@@ -100,6 +101,45 @@ Both functions must be called in an injection context (field initializers, a con
 ```ts
 readonly errors = validationErrors(() => (this.changes(), this.entity), 'Customer');
 ```
+
+## Signal Forms
+
+`validateWithMetadata` from `@ideablade/validation/angular/signal-forms` applies the metadata rules of a model type to a Signal Forms form (`@angular/forms/signals`). Signal Forms needs Angular 22, so it has its own entry point; the rest of the Angular integration keeps working with Angular 17.1 and later.
+
+Call it in the schema function of `form()`, which runs in an injection context:
+
+```ts
+import { form, FormField } from '@angular/forms/signals';
+import { validateWithMetadata } from '@ideablade/validation/angular/signal-forms';
+
+@Component({
+  imports: [FormField],
+  template: `
+    <input [formField]="nameForm.firstName" />
+    @for (error of nameForm.firstName().errors(); track error.kind) { <small>{{ error.message }}</small> }
+  `,
+})
+export class NameEditorComponent {
+  readonly name = signal<ResourceName>({ firstName: '', middleName: '', lastName: '' });
+  readonly nameForm = form(this.name, (path) => validateWithMetadata(path, { modelType: 'ResourceName' }));
+}
+```
+
+- **Where errors show:** an error of a property shows on that property's field. Model-level errors, and errors of properties the form has no field for, show on the field you passed, usually the form's root.
+- **Sync rules** run whenever the model changes, so cross-property rules stay up to date.
+- **Async rules** run debounced (`debounce`, default 300 ms), once the sync ones pass. They include Breeze's async validators when the rules come from `breezeRuleSource`.
+- **The errors:** `kind` is the framework's error key (`required_firstName`), `message` the error message, and `validationError` the full `ValidationError`.
+
+| Option | Default |
+|---|---|
+| `modelType` | The model type resolvers. A string, or a function of the model. |
+| `group` | Validators without a group, as in the other form integrations. |
+| `context` | Extra context for the validators. |
+| `predicate` | All validators (after the group filter). |
+| `debounce` | 300 ms, for async rules. |
+| `service` | `inject(ValidationService)`. |
+
+A view model whose properties inherit an entity's rules with [`from`](metadata.md#inheriting-a-propertys-rules-from) gets the entity's Breeze rules in a Signal Form, with no rules restated. See [breeze.md](breeze.md#rules-for-view-models-breezerulesource).
 
 ## Reactive forms
 

@@ -40,6 +40,13 @@ export interface ValidatorGroupConfig {
 export type ValidatorOrGroupConfig = ValidatorConfigLike | ValidatorGroupConfig;
 
 export interface PropertyValidationConfig {
+  /**
+   * Inherit the rules of another model type's property: `"Customer"` for the property of the same name, or
+   * `"Customer.email"`. The property gets that property's validators and `displayName`, from the metadata and from
+   * the registered rule sources (such as Breeze's metadata); its own settings are added on top. Typical for view
+   * models that edit some of an entity's properties.
+   */
+  readonly from?: string;
   readonly displayName?: string;
   /** Shorthand for the `required` validator. */
   readonly required?: boolean;

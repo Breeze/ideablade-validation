@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   type EntityInfo,
   type ModelValidationMetadataMap,
+  type RuleSource,
+  SyncValidator,
   type ValidatorFactory,
   ValidationConfigurationError,
   asyncValidator,
@@ -47,6 +49,65 @@ describe('model type resolvers', () => {
     expect(service.resolveModelType({ kind: 'Order' })).toBe('Order');
     expect(service.resolveModelType({})).toBe('Fallback');
     expect(createValidationService().resolveModelType({ kind: 'Order' })).toBeUndefined();
+  });
+});
+
+describe('from: inheriting the rules of another property', () => {
+  const base = {
+    Customer: {
+      validators: [{ name: 'expression', context: { expression: 'false', messageTemplate: 'model rule' } }],
+      properties: {
+        email: { displayName: 'E-mail', required: true, validators: ['email'] },
+        name: { displayName: 'Name', maxLength: 5 },
+        phone: { required: true },
+      },
+    },
+  };
+
+  it('inherits the validators and displayName of the referenced property, not the other rules of its model', () => {
+    const service = createValidationService({
+      metadata: [base, { CustomerEdit: { properties: { email: { from: 'Customer' }, label: { from: 'Customer.name' } } } }],
+    });
+    const errors = service.validateModelSync({ email: 'nope', label: 'Too long' }, 'CustomerEdit');
+    expect(errors.map((e) => e.errorMessage)).toEqual(['E-mail is not a valid email address', 'Name must be at most 5 characters']);
+    expect(errors.map((e) => e.key)).toEqual(['email_email', 'maxLength_label']);
+  });
+
+  it('adds its own settings on top: a later displayName wins, a repeated shorthand runs once', () => {
+    const service = createValidationService({
+      metadata: [base, { CustomerEdit: { properties: { email: { from: 'Customer', displayName: 'Mail', required: true, maxLength: 3 } } } }],
+    });
+    expect(service.validateModelSync({ email: '' }, 'CustomerEdit').map((e) => e.errorMessage)).toEqual(['Mail is required']);
+    expect(service.validateModelSync({ email: 'a@b.co' }, 'CustomerEdit').map((e) => e.errorMessage)).toEqual(['Mail must be at most 3 characters']);
+  });
+
+  it('follows chains, and reports cycles and unknown references', () => {
+    const chained = createValidationService({
+      metadata: [base, { A: { properties: { email: { from: 'Customer' } } }, B: { properties: { email: { from: 'A' } } } }],
+    });
+    expect(chained.validateModelSync({ email: '' }, 'B').map((e) => e.errorMessage)).toEqual(['E-mail is required']);
+
+    const cyclic = createValidationService({ metadata: { A: { properties: { x: { from: 'B' } } }, B: { properties: { x: { from: 'A' } } } } });
+    expect(() => cyclic.validateModelSync({}, 'A')).toThrow(/circular 'from'/);
+
+    const unknown = createValidationService({ metadata: { A: { properties: { x: { from: 'Nope' } } } } });
+    expect(() => unknown.validateModelSync({}, 'A')).toThrow(/no metadata and no rule source knows/);
+  });
+
+  it('asks the rule sources, registers their validators, and lets the metadata override their displayName', () => {
+    const shout = { name: 'shout', fn: () => new SyncValidator('shout', undefined, (v) => v === String(v).toUpperCase(), { messageTemplate: '%displayName% must be upper case' }) };
+    const source: RuleSource = {
+      validators: [shout],
+      getPropertyRules: (type, prop) => (type === 'Server' && prop === 'code' ? { displayName: 'Server code', validators: ['shout'] } : undefined),
+    };
+    const service = createValidationService({
+      metadata: { Form: { properties: { code: { from: 'Server' }, label: { from: 'Server.code', displayName: 'Label' } } } },
+      ruleSources: [source],
+    });
+    expect(service.validateModelSync({ code: 'abc', label: 'x' }, 'Form').map((e) => e.errorMessage)).toEqual([
+      'Server code must be upper case',
+      'Label must be upper case',
+    ]);
   });
 });
 

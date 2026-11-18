@@ -101,6 +101,58 @@ provideValidation({
 
 See [breeze.md](breeze.md#model-type-names) for the details.
 
+## Rule sources
+
+Not every rule lives in the validation metadata. Data frameworks keep their own: Breeze builds `required` and `maxLength` validators from the server model's `[Required]` and `[StringLength]` attributes, and an ORM or a schema registry knows column lengths. For entities that's fine, because the `breeze` validator runs those rules on the entity. A **view model** that edits some of an entity's properties has no such link.
+
+A **rule source** makes those outside rules available to the metadata. A property declared with [`from`](metadata.md#inheriting-a-propertys-rules-from) inherits the rules of another model type's property. The metadata asks every registered rule source for that property's rules, and adds whatever they return in front of the rules the metadata itself has for it:
+
+```json
+{ "PersonName": { "properties": { "firstName": { "from": "Person" }, "surname": { "from": "Person.lastName" } } } }
+```
+
+With Breeze's rule source registered, `PersonName.firstName` gets Breeze's rules for `Person.firstName`, and the rules stay defined once, on the server model.
+
+| | |
+|---|---|
+| Interface | `RuleSource` (TS), `IValidationRuleSource` (.NET) |
+| What it returns | `getPropertyRules(modelType, propertyName)` returns a property entry (`displayName`, `validators`, shorthands) for the properties it knows, or `undefined`. |
+| Validators | The returned entries refer to validators by name. A rule source lists the factories it needs in `validators`, and they're registered along with the metadata. |
+| When it's asked | Only for `from` references. Entities keep their own rules, so nothing is reported twice. |
+| Order | Rule sources first, then the metadata's own rules for the referenced property, then the inheriting property's own settings. Later settings win, so the metadata can rename (`displayName`) or add to what a rule source supplies. |
+
+### Writing your own
+
+Return an entry, possibly without validators, for **every** property the source knows. `from` treats a reference that neither the metadata nor any rule source knows as a typo and throws an error.
+
+```ts
+import { type RuleSource, createValidationService } from '@ideablade/validation';
+
+// Column lengths from a database schema. It only uses built-in validators, so it lists none.
+const columns: RuleSource = {
+  getPropertyRules: (modelType, propertyName) => {
+    const column = schema.tables[modelType]?.columns[propertyName];
+    return column ? { maxLength: column.maxLength, required: !column.nullable } : undefined;
+  },
+};
+
+const service = createValidationService({ metadata, ruleSources: [columns] });
+```
+
+### Registering them
+
+| Where | |
+|---|---|
+| Core, React | `createValidationService({ ruleSources })`, `<ValidationProvider ruleSources={...}>` |
+| Angular | `provideValidation({ ruleSources })`, or `provideRuleSources(...)`, which also accepts a function that can `inject()`: `provideRuleSources(() => breezeRuleSource(inject(EntityManagerProvider).metadataStore))` |
+| .NET | `AddIdeaBladeValidation(v => v.AddRuleSource(source))` or `AddRuleSource<T>()`, or the `ruleSources` constructor argument of `ValidationMetadata` |
+
+Rules are looked up when a property is first validated, and then cached until the metadata changes. Register a rule source whose data loads later, such as a Breeze `MetadataStore` that's fetched from the server, as a function: `breezeRuleSource(() => manager.metadataStore)`.
+
+### Breeze
+
+`breezeRuleSource(metadataStore)` from `@ideablade/validation/breeze` knows every property of every entity type in the store. For a property, it returns Breeze's display name and a `breezeProperty` validator that runs that property's Breeze validators on a value, both sync and async. See [breeze.md](breeze.md#rules-for-view-models-breezerulesource).
+
 ## Writing an entity store
 
 An entity store comes in one of two shapes. Both can add an optional `getEntities(type)`, a fast lookup for `store(type)`.

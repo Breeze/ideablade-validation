@@ -133,36 +133,88 @@ export class GlobalMetadata {
   }
 }
 
+/** A property another property inherits its rules from (`"from": "Customer.email"`). */
+export interface PropertyReference {
+  readonly modelType: string;
+  readonly propertyName: string;
+}
+
 /** Validation metadata for one property of a model. */
 export class PropertyMetadata {
   private _validators?: ValidatorMetadata[];
+  private _resolvedConfigs?: readonly PropertyValidationConfig[];
+  private resolving = false;
 
   constructor(
     readonly propertyName: string,
+    /** This property's own configs (merged from all metadata maps and `extends`), without the inherited `from` rules. */
     readonly configs: readonly PropertyValidationConfig[],
     private readonly owner: ValidationMetadata,
   ) {}
 
+  /** The property whose rules this one inherits (`from`), if any. */
+  get from(): PropertyReference | undefined {
+    const from = lastDefined(this.configs.map((c) => c.from));
+    if (!from) {
+      return undefined;
+    }
+    const dot = from.indexOf('.');
+    return dot < 0 ? { modelType: from, propertyName: this.propertyName } : { modelType: from.slice(0, dot), propertyName: from.slice(dot + 1) };
+  }
+
+  /**
+   * The configs that make up this property: the inherited ones (`from`: first the rule sources, then the referenced
+   * property's metadata, recursively), followed by this property's own. Later configs win for scalar settings.
+   */
+  get resolvedConfigs(): readonly PropertyValidationConfig[] {
+    if (this._resolvedConfigs) {
+      return this._resolvedConfigs;
+    }
+    const from = this.from;
+    if (!from) {
+      return (this._resolvedConfigs = this.configs);
+    }
+    if (this.resolving) {
+      throw new ValidationConfigurationError(`Property '${this.propertyName}' has a circular 'from' chain through '${from.modelType}.${from.propertyName}'.`);
+    }
+    this.resolving = true;
+    try {
+      const fromSources = this.owner.ruleSources
+        .map((source) => source.getPropertyRules(from.modelType, from.propertyName))
+        .filter((c): c is PropertyValidationConfig => !!c);
+      const fromMetadata = this.owner.getModelMetadata(from.modelType).getProperty(from.propertyName)?.resolvedConfigs;
+      if (fromSources.length === 0 && !fromMetadata) {
+        throw new ValidationConfigurationError(
+          `Property '${this.propertyName}' inherits from '${from.modelType}.${from.propertyName}', which has no metadata and no rule source knows.`,
+        );
+      }
+      return (this._resolvedConfigs = [...fromSources, ...(fromMetadata ?? []), ...this.configs]);
+    } finally {
+      this.resolving = false;
+    }
+  }
+
   get displayName(): string | undefined {
-    return lastDefined(this.configs.map((c) => c.displayName));
+    return lastDefined(this.resolvedConfigs.map((c) => c.displayName));
   }
 
   get validators(): readonly ValidatorMetadata[] {
     if (this._validators) {
       return this._validators;
     }
-    const validators = this.configs.flatMap((c) => toValidatorMetadata(c.validators, this.owner));
+    const configs = this.resolvedConfigs;
+    const validators = configs.flatMap((c) => toValidatorMetadata(c.validators, this.owner));
     const hasUngrouped = (name: string) => validators.some((v) => v.name === name && !v.group);
 
-    const required = lastDefined(this.configs.map((c) => c.required));
+    const required = lastDefined(configs.map((c) => c.required));
     if (required && !hasUngrouped('required')) {
       validators.push(new ValidatorMetadata({ name: 'required', id: 'REQUIRED' }, this.owner));
     }
-    const minLength = lastDefined(this.configs.map((c) => c.minLength));
+    const minLength = lastDefined(configs.map((c) => c.minLength));
     if (minLength != null && !hasUngrouped('minLength')) {
       validators.push(new ValidatorMetadata({ name: 'minLength', id: 'MIN_LENGTH', context: { minLength } }, this.owner));
     }
-    const maxLength = lastDefined(this.configs.map((c) => c.maxLength));
+    const maxLength = lastDefined(configs.map((c) => c.maxLength));
     if (maxLength != null && !hasUngrouped('maxLength')) {
       validators.push(new ValidatorMetadata({ name: 'maxLength', id: 'MAX_LENGTH', context: { maxLength } }, this.owner));
     }
@@ -284,6 +336,20 @@ export class ModelMetadata {
   }
 }
 
+/**
+ * Supplies the rules of model type properties that live outside the validation metadata, such as Breeze's
+ * metadata. A property's `from` reference inherits them (see {@link PropertyMetadata.from}).
+ */
+export interface RuleSource {
+  /** Validator factories the returned rules refer to. They are registered along with the metadata. */
+  readonly validators?: readonly ValidatorFactory[];
+  /**
+   * The rules of a property, or undefined when this source doesn't know the property. Return a config, possibly
+   * without validators, for every property the source knows: `from` reports a reference nobody knows as an error.
+   */
+  getPropertyRules(modelType: string, propertyName: string): PropertyValidationConfig | undefined;
+}
+
 export interface ValidationMetadataOptions {
   /** Validation metadata (JSON) — one map or several to be merged. */
   metadata?: ModelValidationMetadataLike;
@@ -291,6 +357,8 @@ export interface ValidationMetadataOptions {
   validators?: readonly ValidatorFactory[];
   /** Evaluator for conditions and expressions. Defaults to a {@link SafeExpressionEvaluator}. */
   expressionEvaluator?: ExpressionEvaluator;
+  /** Sources of property rules outside the metadata, consulted for `from` references (e.g. `breezeRuleSource`). */
+  ruleSources?: readonly RuleSource[];
 }
 
 /**
@@ -302,6 +370,7 @@ export interface ValidationMetadataOptions {
 export class ValidationMetadata {
   readonly validatorFactories: readonly ValidatorFactory[];
   readonly expressionEvaluator: ExpressionEvaluator;
+  readonly ruleSources: readonly RuleSource[];
 
   private maps: ModelValidationMetadataMap[] = [];
   private models = new Map<string, ModelMetadata>();
@@ -309,7 +378,9 @@ export class ValidationMetadata {
   private readonly metadataChanged = new Subject<ValidationMetadata>();
 
   constructor(options: ValidationMetadataOptions = {}) {
-    this.validatorFactories = [...(options.validators ?? [])];
+    this.ruleSources = [...(options.ruleSources ?? [])];
+    // The rule sources' factories; the same factory object registered twice counts once.
+    this.validatorFactories = [...new Set([...(options.validators ?? []), ...this.ruleSources.flatMap((r) => r.validators ?? [])])];
     this.validatorFactories.forEach((factory, ix) => {
       if (!factory?.name) {
         throw new ValidationConfigurationError(`Validator factory #${ix} lacks a name.`);

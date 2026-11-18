@@ -111,3 +111,40 @@ provideValidation({
 ```
 
 An explicit `options.store`, and the store of entity store validation, still take precedence.
+
+## Rules for view models (`breezeRuleSource`)
+
+A dialog or form often edits a view model instead of the entity, and assigns the values to the entity when it closes. TempHire's name editor is an example: it edits a `{ firstName, middleName, lastName }` copy of a `StaffingResource`'s names. The `breeze` validator can't check the view model, because it isn't an entity. You don't want to restate the server model's `[Required]` and `[StringLength]` rules in the validation metadata either.
+
+`breezeRuleSource` is a [rule source](concepts.md#rule-sources) that gives a view model property the Breeze rules of an entity property. Declare the view model's properties with [`from`](metadata.md#inheriting-a-propertys-rules-from):
+
+```json
+{
+  "ResourceName": {
+    "properties": {
+      "firstName":  { "from": "StaffingResource", "displayName": "First name" },
+      "middleName": { "from": "StaffingResource", "displayName": "Middle name" },
+      "lastName":   { "from": "StaffingResource", "displayName": "Last name" }
+    }
+  }
+}
+```
+
+Register the rule source with the `MetadataStore`. If the store is filled later, pass a function that returns it:
+
+```ts
+import { breezeRuleSource } from '@ideablade/validation/breeze';
+
+createValidationService({ metadata, ruleSources: [breezeRuleSource(() => manager.metadataStore)] });
+// Angular:
+provideRuleSources(() => breezeRuleSource(inject(EntityManagerProvider).metadataStore));
+```
+
+For each referenced property, `breezeRuleSource` supplies:
+
+- **a `breezeProperty` validator** that runs the property's Breeze validators on the view model's value. `validateModelSync` runs Breeze's sync validators; `validateModelAsync`, `validate` and the form integrations also run its async ones.
+  - Breeze formats the messages, with the view model's display name: `'First name' is required`.
+  - Error keys follow the framework's convention, named after the Breeze validator: `required_firstName`, `maxLength_firstName`.
+- **Breeze's display name** for the property, used when the metadata doesn't set one.
+
+It knows every property of every entity type in the store, including properties without validators, so a mistyped `from` is still reported as an error. Entities themselves aren't affected: they keep using the `breeze` validator.

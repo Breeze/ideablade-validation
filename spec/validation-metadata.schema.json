@@ -43,6 +43,11 @@
     "property": {
       "type": "object",
       "properties": {
+        "from": {
+          "type": "string",
+          "pattern": "^[^.]+(\\.[^.]+)?$",
+          "description": "Inherit the rules of another model type's property: 'Customer' for the property of the same name, or 'Customer.email'. Includes the rules registered rule sources (such as Breeze's metadata) have for it."
+        },
         "displayName": { "type": "string" },
         "required": { "type": "boolean", "description": "Shorthand for the 'required' validator." },
         "minLength": { "type": "integer", "minimum": 0, "description": "Shorthand for the 'minLength' validator." },

@@ -93,11 +93,38 @@ namespace IdeaBlade.Validation.Metadata
         public IReadOnlyList<ValidatorMetadata> Validators { get; }
     }
 
+    /// <summary>
+    /// Supplies the rules of model type properties that live outside the validation metadata. A property's
+    /// <c>from</c> reference inherits them.
+    /// </summary>
+    public interface IValidationRuleSource
+    {
+        /// <summary>Validator factories the returned rules refer to. They are registered along with the metadata.</summary>
+        IEnumerable<ValidatorFactory> Validators { get; }
+
+        /// <summary>
+        /// The rules of a property, or null when this source doesn't know the property. Return a config, possibly without
+        /// validators, for every property the source knows: <c>from</c> reports a reference nobody knows as an error.
+        /// </summary>
+        PropertyValidationConfig? GetPropertyRules(string modelType, string propertyName);
+    }
+
+    /// <summary>A property another property inherits its rules from (<c>"from": "Customer.email"</c>).</summary>
+    public sealed class PropertyReference
+    {
+        public PropertyReference(string modelType, string propertyName) { ModelType = modelType; PropertyName = propertyName; }
+        public string ModelType { get; }
+        public string PropertyName { get; }
+    }
+
     /// <summary>Validation metadata for one property of a model.</summary>
     public sealed class PropertyMetadata
     {
         private readonly ValidationMetadata _owner;
         private IReadOnlyList<ValidatorMetadata>? _validators;
+        private IReadOnlyList<PropertyValidationConfig>? _resolvedConfigs;
+        private readonly object _lock = new object();
+        private bool _resolving;
 
         internal PropertyMetadata(string propertyName, IReadOnlyList<PropertyValidationConfig> configs, ValidationMetadata owner)
         {
@@ -107,24 +134,69 @@ namespace IdeaBlade.Validation.Metadata
         }
 
         public string PropertyName { get; }
+        /// <summary>This property's own configs, without the rules inherited through <c>from</c>.</summary>
         public IReadOnlyList<PropertyValidationConfig> Configs { get; }
-        public string? DisplayName => Configs.Select(c => c.DisplayName).LastOrDefault(v => v != null);
+        public string? DisplayName => ResolvedConfigs.Select(c => c.DisplayName).LastOrDefault(v => v != null);
+
+        /// <summary>The property whose rules this one inherits (<c>from</c>), if any.</summary>
+        public PropertyReference? From
+        {
+            get
+            {
+                var from = Configs.Select(c => c.From).LastOrDefault(v => v != null);
+                if (string.IsNullOrEmpty(from)) return null;
+                var dot = from!.IndexOf('.');
+                return dot < 0 ? new PropertyReference(from, PropertyName) : new PropertyReference(from.Substring(0, dot), from.Substring(dot + 1));
+            }
+        }
+
+        /// <summary>
+        /// The configs that make up this property: the inherited ones (<c>from</c>: first the rule sources, then the
+        /// referenced property's metadata, recursively), followed by this property's own. Later configs win for scalar settings.
+        /// </summary>
+        public IReadOnlyList<PropertyValidationConfig> ResolvedConfigs
+        {
+            get
+            {
+                if (_resolvedConfigs != null) return _resolvedConfigs;
+                var from = From;
+                if (from == null) return _resolvedConfigs = Configs;
+                lock (_lock)
+                {
+                    if (_resolving) throw new ValidationConfigurationException($"Property '{PropertyName}' has a circular 'from' chain through '{from.ModelType}.{from.PropertyName}'.");
+                    _resolving = true;
+                    try
+                    {
+                        var fromSources = _owner.RuleSources.Select(s => s.GetPropertyRules(from.ModelType, from.PropertyName)).Where(c => c != null).Select(c => c!).ToList();
+                        var fromMetadata = _owner.GetModelMetadata(from.ModelType).GetProperty(from.PropertyName)?.ResolvedConfigs;
+                        if (fromSources.Count == 0 && fromMetadata == null)
+                            throw new ValidationConfigurationException($"Property '{PropertyName}' inherits from '{from.ModelType}.{from.PropertyName}', which has no metadata and no rule source knows.");
+                        return _resolvedConfigs = fromSources.Concat(fromMetadata ?? Array.Empty<PropertyValidationConfig>()).Concat(Configs).ToList();
+                    }
+                    finally
+                    {
+                        _resolving = false;
+                    }
+                }
+            }
+        }
 
         public IReadOnlyList<ValidatorMetadata> Validators
         {
             get
             {
                 if (_validators != null) return _validators;
-                var validators = Configs.SelectMany(c => ValidatorMetadata.From(c.Validators, _owner)).ToList();
+                var configs = ResolvedConfigs;
+                var validators = configs.SelectMany(c => ValidatorMetadata.From(c.Validators, _owner)).ToList();
                 bool HasUngrouped(string name) => validators.Any(v => v.Name == name && v.Group == null);
 
-                var required = Configs.Select(c => c.Required).LastOrDefault(v => v != null);
+                var required = configs.Select(c => c.Required).LastOrDefault(v => v != null);
                 if (required == true && !HasUngrouped("required"))
                     validators.Add(new ValidatorMetadata(new ValidatorConfig("required") { Id = "REQUIRED" }, _owner));
-                var minLength = Configs.Select(c => c.MinLength).LastOrDefault(v => v != null);
+                var minLength = configs.Select(c => c.MinLength).LastOrDefault(v => v != null);
                 if (minLength != null && !HasUngrouped("minLength"))
                     validators.Add(new ValidatorMetadata(new ValidatorConfig("minLength") { Id = "MIN_LENGTH", Context = new Dictionary<string, object?> { ["minLength"] = minLength } }, _owner));
-                var maxLength = Configs.Select(c => c.MaxLength).LastOrDefault(v => v != null);
+                var maxLength = configs.Select(c => c.MaxLength).LastOrDefault(v => v != null);
                 if (maxLength != null && !HasUngrouped("maxLength"))
                     validators.Add(new ValidatorMetadata(new ValidatorConfig("maxLength") { Id = "MAX_LENGTH", Context = new Dictionary<string, object?> { ["maxLength"] = maxLength } }, _owner));
                 return _validators = validators;
@@ -275,15 +347,26 @@ namespace IdeaBlade.Validation.Metadata
         private ConcurrentDictionary<string, ModelMetadata> _models = new ConcurrentDictionary<string, ModelMetadata>(StringComparer.Ordinal);
         private GlobalMetadata? _global;
 
-        public ValidationMetadata(IEnumerable<ModelValidationMetadataMap>? metadata, IEnumerable<ValidatorFactory> validatorFactories, IExpressionEvaluator? expressionEvaluator = null)
+        public ValidationMetadata(
+            IEnumerable<ModelValidationMetadataMap>? metadata,
+            IEnumerable<ValidatorFactory> validatorFactories,
+            IExpressionEvaluator? expressionEvaluator = null,
+            IEnumerable<IValidationRuleSource>? ruleSources = null)
         {
-            ValidatorFactories = (validatorFactories ?? throw new ArgumentNullException(nameof(validatorFactories))).ToList();
+            RuleSources = (ruleSources ?? Enumerable.Empty<IValidationRuleSource>()).ToList();
+            // The rule sources' factories; the same factory object registered twice counts once.
+            ValidatorFactories = (validatorFactories ?? throw new ArgumentNullException(nameof(validatorFactories)))
+                .Concat(RuleSources.SelectMany(s => s.Validators ?? Enumerable.Empty<ValidatorFactory>()))
+                .Distinct()
+                .ToList();
             ExpressionEvaluator = expressionEvaluator ?? new SafeExpressionEvaluator();
             SetMetadata(metadata ?? Enumerable.Empty<ModelValidationMetadataMap>(), suppressChangeEvent: true);
         }
 
         public IReadOnlyList<ValidatorFactory> ValidatorFactories { get; }
         public IExpressionEvaluator ExpressionEvaluator { get; }
+        /// <summary>Sources of property rules outside the metadata, consulted for <c>from</c> references.</summary>
+        public IReadOnlyList<IValidationRuleSource> RuleSources { get; }
 
         /// <summary>Raised after <see cref="SetMetadata"/> replaces the metadata.</summary>
         public event EventHandler? MetadataChanged;

@@ -31,6 +31,7 @@ builder.Services.AddIdeaBladeValidation(v => v
 | `AddValidators(params ValidatorFactory[])` | Register validators |
 | `ExcludeDefaultValidators()` | Don't register `DefaultValidators.All` |
 | `AddContextProvider<T>()` | `IValidatorContextProvider`: adds context values per model |
+| `AddRuleSource(source)` / `AddRuleSource<T>()` | `IValidationRuleSource`: rules outside the metadata, inherited through `from` ([concepts.md](concepts.md#rule-sources)) |
 | `AddExpressionFunction(name, delegate)` | A trusted function callable from expressions |
 | `Configure(Action<ValidationServiceOptions>)` | `AsyncTimeout`, `OnAsyncTimeout`, `ModelTypeResolver`, `ExpressionScope` |
 | `ConfigureExpressions(Action<SafeExpressionEvaluatorOptions>)` | `Globals`, `AllowedMethods`, `MaxSteps`, `MaxCallDepth`, `CacheSize` |

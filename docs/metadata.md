@@ -77,6 +77,7 @@ This lets a feature module add rules to a shared model.
 
 | Key | Meaning |
 |---|---|
+| `from` | Inherit the rules of another model type's property: `"Customer"` for the property of the same name, `"Customer.email"` for another one. See [Inheriting a property's rules](#inheriting-a-propertys-rules-from). |
 | `displayName` | Used in messages as `%displayName%`. If missing, the property name is used. |
 | `required` | Shorthand for `{ "name": "required", "id": "REQUIRED" }`. Not added if an ungrouped `required` validator is already listed. |
 | `minLength` / `maxLength` | Shorthands for the `minLength` / `maxLength` validators (ids `MIN_LENGTH` / `MAX_LENGTH`). |
@@ -107,6 +108,31 @@ service.validateModelSync(order, 'Order', { predicate: (v) => !v.group || v.grou
 ```
 
 The group becomes part of the error key: `required_submit_quantity`.
+
+## Inheriting a property's rules (`from`)
+
+A view model, or a form model, often edits some properties of an entity. For example, a dialog edits a copy of a person's names and assigns them to the entity when it closes. `from` lets each of its properties follow the rules of the entity property, without restating them:
+
+```json
+{
+  "PersonName": {
+    "properties": {
+      "firstName":  { "from": "Person" },
+      "middleName": { "from": "Person" },
+      "surname":    { "from": "Person.lastName", "displayName": "Last name" }
+    }
+  }
+}
+```
+
+- **Which property:** `"from": "Person"` takes the property of the same name. `"from": "Person.lastName"` names it explicitly, for a property that's called differently.
+- **What's inherited:** the referenced property's validators (groups and conditions included) and its `displayName`.
+  - Rules from the referenced property's own `from` are included, so chains work.
+  - Rules that **rule sources** have for the referenced property are included too. A rule source supplies rules that aren't in the metadata, such as the `[Required]` and `[StringLength]` rules Breeze gets from the server model. With `breezeRuleSource` registered, `"from": "Person"` picks those up even when `Person` has no metadata entry at all ([concepts.md](concepts.md#rule-sources), [breeze.md](breeze.md#rules-for-view-models-breezerulesource)).
+- **What isn't inherited:** the referenced *model's* other properties and its model-level validators. That's the difference from `extends`, which would bring in every rule of `Person`, including ones for fields the view model doesn't have.
+- **Your own settings go on top:** anything else in the entry is added to the inherited rules, the way merged metadata works. A `displayName` replaces the inherited one, and a `required` or `maxLength` shorthand that's already inherited isn't added twice.
+- **Conditions and expressions** that come with the inherited rules run against *this* model. A rule that reads `model.x` sees this model's `x`, or `undefined` if it has none.
+- **Errors:** a reference that neither the metadata nor any rule source knows, and a circular chain, both throw a `ValidationConfigurationError` when the property is first validated.
 
 ## Message templates
 

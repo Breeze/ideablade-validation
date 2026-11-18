@@ -45,7 +45,7 @@ import { type Observable, Subject, filter, map, of, switchMap, timer } from 'rxj
 import type { EntityInfo, GlobalValidationContext, StoreQuery, ValidatorContextProvider } from '../core/context.js';
 import { createEntityStore } from '../core/entity-store.js';
 import type { ModelValidationMetadataLike } from '../core/metadata-config.js';
-import { ValidationMetadata } from '../core/metadata.js';
+import { type RuleSource, ValidationMetadata } from '../core/metadata.js';
 import type { ValidationError } from '../core/validation-error.js';
 import {
   type ModelTypeResolver,
@@ -71,6 +71,8 @@ export const VALIDATOR_FACTORY = new InjectionToken<ValidatorFactory[]>('IdeaBla
 export const VALIDATOR_CONTEXT_PROVIDER = new InjectionToken<ValidatorContextProvider[]>('IdeaBlade.ValidatorContextProvider');
 /** Model type resolvers (multi; the first that returns a name wins). */
 export const VALIDATION_MODEL_TYPE_RESOLVER = new InjectionToken<ModelTypeResolver[]>('IdeaBlade.ValidationModelTypeResolver');
+/** Rule sources, consulted for `from` references (multi). */
+export const VALIDATION_RULE_SOURCE = new InjectionToken<RuleSource[]>('IdeaBlade.ValidationRuleSource');
 /** Store resolvers (multi; the first that returns a lookup wins). */
 export const VALIDATION_STORE_RESOLVER = new InjectionToken<StoreResolver[]>('IdeaBlade.ValidationStoreResolver');
 /** Trusted functions/values visible to expressions (multi; objects are merged). */
@@ -95,6 +97,8 @@ export interface ValidationConfig extends Pick<ValidationServiceOptions, 'asyncT
   modelTypeResolvers?: ModelTypeResolver[];
   /** Provide `store(type)` where a validation has none, such as `breezeStoreQuery`. */
   storeResolvers?: StoreResolver[];
+  /** Sources of property rules outside the metadata, such as `breezeRuleSource(metadataStore)`. */
+  ruleSources?: RuleSource[];
   /** Replaces the default {@link SafeExpressionEvaluator}. */
   expressionEvaluator?: ExpressionEvaluator;
 }
@@ -113,6 +117,7 @@ export function provideValidation(config: ValidationConfig = {}): EnvironmentPro
           metadata: flat(inject(VALIDATION_METADATA, { optional: true })) as ModelValidationMetadataLike,
           validators: flat(inject(VALIDATOR_FACTORY, { optional: true })),
           expressionEvaluator: inject(VALIDATION_EXPRESSION_EVALUATOR, { optional: true }) ?? undefined,
+          ruleSources: flat(inject(VALIDATION_RULE_SOURCE, { optional: true })),
         }),
     },
     {
@@ -140,6 +145,9 @@ export function provideValidation(config: ValidationConfig = {}): EnvironmentPro
   }
   if (config.modelTypeResolvers?.length) {
     providers.push(...provideModelTypeResolvers(...config.modelTypeResolvers));
+  }
+  if (config.ruleSources?.length) {
+    providers.push(...provideRuleSources(...config.ruleSources));
   }
   if (config.storeResolvers?.length) {
     providers.push(...provideStoreResolvers(...config.storeResolvers));
@@ -182,6 +190,18 @@ export function provideValidatorContext(factory: () => ValidatorContextProvider)
 /** Registers model type resolvers, such as `breezeModelType`. */
 export function provideModelTypeResolvers(...resolvers: ModelTypeResolver[]): Provider[] {
   return resolvers.map((r) => ({ provide: VALIDATION_MODEL_TYPE_RESOLVER, useValue: r, multi: true }));
+}
+
+/**
+ * Registers rule sources. Pass a function to create one that can `inject()` services.
+ * @example provideRuleSources(() => breezeRuleSource(inject(EntityManagerProvider).metadataStore))
+ */
+export function provideRuleSources(...sources: (RuleSource | (() => RuleSource))[]): Provider[] {
+  return sources.map((source) =>
+    typeof source === 'function'
+      ? { provide: VALIDATION_RULE_SOURCE, useFactory: source, multi: true }
+      : { provide: VALIDATION_RULE_SOURCE, useValue: source, multi: true },
+  );
 }
 
 /** Registers store resolvers, such as `breezeStoreQuery`. */

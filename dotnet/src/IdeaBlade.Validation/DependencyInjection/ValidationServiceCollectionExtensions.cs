@@ -65,6 +65,20 @@ namespace Microsoft.Extensions.DependencyInjection
             return this;
         }
 
+        /// <summary>Registers a source of property rules outside the metadata, consulted for <c>from</c> references.</summary>
+        public ValidationBuilder AddRuleSource(IValidationRuleSource source)
+        {
+            Services.AddSingleton(source);
+            return this;
+        }
+
+        /// <summary>Registers a rule source created by the container (singleton).</summary>
+        public ValidationBuilder AddRuleSource<T>() where T : class, IValidationRuleSource
+        {
+            Services.AddSingleton<IValidationRuleSource, T>();
+            return this;
+        }
+
         /// <summary>Don't register <see cref="DefaultValidators.All"/>.</summary>
         public ValidationBuilder ExcludeDefaultValidators()
         {
@@ -129,7 +143,8 @@ namespace Microsoft.Extensions.DependencyInjection
             services.TryAddSingleton(sp => new ValidationMetadata(
                 builder.MetadataSources.SelectMany(source => source(sp)).ToList(),
                 (builder.IncludeDefaultValidators ? DefaultValidators.All : Enumerable.Empty<ValidatorFactory>()).Concat(builder.Validators),
-                sp.GetRequiredService<IExpressionEvaluator>()));
+                sp.GetRequiredService<IExpressionEvaluator>(),
+                sp.GetServices<IValidationRuleSource>()));
             services.TryAddSingleton(_ =>
             {
                 var options = new ValidationServiceOptions();

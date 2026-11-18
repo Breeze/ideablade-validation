@@ -25,7 +25,7 @@ import { type Observable, defer, firstValueFrom } from 'rxjs';
 
 import type { EntityInfo, ValidationContext, ValidationContextBase, ValidatorFunctionContext } from '../core/context.js';
 import { createEntityStore } from '../core/entity-store.js';
-import type { ValidatorMetadata } from '../core/metadata.js';
+import type { RuleSource, ValidatorMetadata } from '../core/metadata.js';
 import { ValidationError, getPath } from '../core/validation-error.js';
 import type { ModelTypeResolver, NotifyingEntityStore, StoreResolver, ValidationOptions, ValidationService } from '../core/validation-service.js';
 import { type Validator, ValidatorBase, type ValidatorFactory } from '../core/validator.js';
@@ -62,6 +62,96 @@ export const breezeStoreQuery: StoreResolver = (model) => {
   const manager = isBreezeEntity(model) ? model.entityAspect.entityManager : undefined;
   return manager ? (entityType) => liveEntities(manager, entityType) : undefined;
 };
+
+/** A Breeze data or navigation property: both carry validators and a display name. */
+type BreezeProperty = { readonly name: string; readonly validators: BreezeValidator[]; readonly displayName?: string };
+
+/**
+ * Validator `breezeProperty`: runs the Breeze validators of one entity property (`context.breezeProperty`) against a
+ * value, without an entity. Used by {@link breezeRuleSource} so that a view model property declared with
+ * `"from": "StaffingResource.firstName"` gets the rules Breeze built from the server model. `validateModelSync` runs
+ * Breeze's sync validators; `validateModelAsync` and `validate` run all of them, sync and async.
+ */
+export class BreezePropertyValidator extends ValidatorBase implements Validator {
+  readonly isAsync = false;
+  declare metadata?: ValidatorMetadata;
+
+  constructor(group?: string, context?: Partial<ValidationContextBase>) {
+    super('breezeProperty', group, { ...context, messageTemplate: context?.messageTemplate || 'Breeze validation error' });
+  }
+
+  static create(group?: string, context?: Partial<ValidationContextBase>): BreezePropertyValidator {
+    return new BreezePropertyValidator(group, context);
+  }
+
+  validate(value: unknown, context?: ValidationContext): ValidationError[] | null {
+    const ctx = this.getValidatorFunctionContext(value, context);
+    const property = ctx.breezeProperty as BreezeProperty;
+    const breezeContext = this.breezeContext(property, ctx);
+    return this.map(
+      property.validators.filter((v) => !v.isAsync).map((v) => v.validate(value, breezeContext)),
+      ctx,
+    );
+  }
+
+  validateAsync(value: unknown, context?: ValidationContext): Observable<ValidationError[] | null> {
+    return defer(async () => {
+      const ctx = this.getValidatorFunctionContext(value, context);
+      const property = ctx.breezeProperty as BreezeProperty;
+      const breezeContext = this.breezeContext(property, ctx);
+      return this.map(await Promise.all(property.validators.map((v) => v.validateAsync(value, breezeContext))), ctx);
+    });
+  }
+
+  /** Breeze formats its messages with the display name of the property being validated, not of the source property. */
+  private breezeContext(property: BreezeProperty, ctx: ValidatorFunctionContext): ValidationMessageContext {
+    return { property, propertyName: property.name, displayName: ctx.displayName || property.displayName } as ValidationMessageContext;
+  }
+
+  private map(results: (BreezeValidationError | null)[], ctx: ValidatorFunctionContext): ValidationError[] | null {
+    const errors = results.filter((e): e is BreezeValidationError => !!e);
+    if (errors.length === 0) {
+      return null;
+    }
+    return errors.map((breezeError) => {
+      const name = breezeError.validator?.name ?? breezeError.key;
+      // Keys follow the framework's convention (`required_firstName`), named after the Breeze validator.
+      const key = [name, this.group, ctx.propertyName].filter(Boolean).join('_');
+      const errorCtx = { ...ctx, messageTemplate: breezeError.errorMessage, breezeError } as ValidatorFunctionContext;
+      return new BreezeMappedValidationError(key, errorCtx, this, breezeError.errorMessage);
+    });
+  }
+}
+
+/** Factory for the `breezeProperty` validator ({@link breezeRuleSource} registers it). */
+export const breezePropertyValidator: ValidatorFactory = { name: 'breezeProperty', fn: BreezePropertyValidator.create };
+
+/**
+ * A rule source for Breeze's metadata: a property declared with `"from": "StaffingResource.firstName"` inherits the
+ * validators Breeze has for that entity property (from the server model's `[Required]`, `[StringLength]` and so on,
+ * plus any you added) and its display name. Pass the MetadataStore, or a function returning it if it is loaded later.
+ *
+ * @example
+ * createValidationService({ metadata, ruleSources: [breezeRuleSource(manager.metadataStore)] });
+ * // Angular: provideRuleSources(() => breezeRuleSource(inject(EntityManagerProvider).metadataStore))
+ */
+export function breezeRuleSource(metadataStore: MetadataStore | (() => MetadataStore)): RuleSource {
+  const store = typeof metadataStore === 'function' ? metadataStore : () => metadataStore;
+  return {
+    validators: [breezePropertyValidator],
+    getPropertyRules(modelType, propertyName) {
+      const type = store().getEntityType(modelType, true) as EntityType | null;
+      const property = type?.getProperty?.(propertyName) as BreezeProperty | null | undefined;
+      if (!property) {
+        return undefined;
+      }
+      return {
+        ...(property.displayName ? { displayName: property.displayName } : {}),
+        validators: property.validators.length ? [{ name: 'breezeProperty', context: { breezeProperty: property } }] : [],
+      };
+    },
+  };
+}
 
 /**
  * Validator `breeze`: runs Breeze's validation for the model (an entity) and maps the resulting errors.

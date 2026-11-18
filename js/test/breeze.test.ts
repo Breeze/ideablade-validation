@@ -2,7 +2,7 @@ import { DataProperty, DataType, EntityManager, EntityState, EntityType, Metadat
 import { filter, firstValueFrom, skip, toArray } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 
-import { breezeEntityStore, breezeModelType, breezeStoreQuery, breezeValidator, installBreezeValidators } from '../src/breeze/index.js';
+import { breezeEntityStore, breezeModelType, breezeRuleSource, breezeStoreQuery, breezeValidator, installBreezeValidators } from '../src/breeze/index.js';
 import { asyncValidator, createValidationService } from '../src/index.js';
 
 function makeManager(): EntityManager {
@@ -48,6 +48,26 @@ describe('breezeModelType', () => {
     expect(breezeModelType(null)).toBeUndefined();
     const service = createValidationService({ metadata, modelTypeResolvers: [breezeModelType] });
     expect(service.resolveModelType(c)).toBe('Customer');
+  });
+});
+
+describe('breezeRuleSource', () => {
+  it('gives a view model property the Breeze rules of an entity property', () => {
+    const manager = makeManager();
+    const service = createValidationService({
+      metadata: { CustomerName: { properties: { name: { from: 'Customer', displayName: 'Customer name' } } } },
+      ruleSources: [breezeRuleSource(() => manager.metadataStore)],
+    });
+    const errors = service.validateModelSync({ name: 'Much too long' }, 'CustomerName');
+    expect(errors.map((e) => [e.key, e.errorMessage])).toEqual([['maxLength_name', "'Customer name' must be a string with 5 characters or less"]]);
+    expect(service.validateModelSync({ name: 'Ann' }, 'CustomerName')).toEqual([]);
+  });
+
+  it('knows every property of the entity type, with or without validators, and nothing else', () => {
+    const source = breezeRuleSource(makeManager().metadataStore);
+    expect(source.getPropertyRules('Customer', 'email')).toEqual({ validators: [] });
+    expect(source.getPropertyRules('Customer', 'nope')).toBeUndefined();
+    expect(source.getPropertyRules('Nope', 'email')).toBeUndefined();
   });
 });
 

@@ -48,6 +48,12 @@ namespace IdeaBlade.Validation.Metadata
 
     public sealed class PropertyValidationConfig
     {
+        /// <summary>
+        /// Inherit the rules of another model type's property: <c>"Customer"</c> for the property of the same name, or
+        /// <c>"Customer.email"</c>. The property gets that property's validators and display name, from the metadata and
+        /// from the registered <see cref="IValidationRuleSource"/>s; its own settings are added on top.
+        /// </summary>
+        public string? From { get; set; }
         public string? DisplayName { get; set; }
         /// <summary>Shorthand for the <c>required</c> validator.</summary>
         public bool? Required { get; set; }
@@ -157,6 +163,7 @@ namespace IdeaBlade.Validation.Metadata
             {
                 switch (prop.Name)
                 {
+                    case "from": config.From = prop.Value.GetString(); break;
                     case "displayName": config.DisplayName = prop.Value.GetString(); break;
                     case "required": config.Required = prop.Value.ValueKind == JsonValueKind.True; break;
                     case "minLength": config.MinLength = prop.Value.ValueKind == JsonValueKind.Number ? prop.Value.GetInt32() : (int?)null; break;

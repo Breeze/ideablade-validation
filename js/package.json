@@ -36,6 +36,10 @@
       "types": "./dist/angular/index.d.ts",
       "default": "./dist/angular/index.js"
     },
+    "./angular/signal-forms": {
+      "types": "./dist/angular/signal-forms.d.ts",
+      "default": "./dist/angular/signal-forms.js"
+    },
     "./react": {
       "types": "./dist/react/index.d.ts",
       "default": "./dist/react/index.js"
