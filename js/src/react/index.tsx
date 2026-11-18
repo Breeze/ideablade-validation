@@ -105,10 +105,10 @@ export function useValidation(model: unknown, modelType: string, options: UseVal
   // Ignore async results that belong to a previous model/version.
   const current = runAsync && asyncState.token === token;
   const pending = runAsync && (!current || asyncState.pending);
-  const asyncErrors = current ? asyncState.errors : EMPTY;
+  // validateModelAsync returns all errors (sync and async); until it completes, show the sync ones.
+  const errors = runAsync && !pending ? asyncState.errors : syncErrors;
 
   return useMemo(() => {
-    const errors = asyncErrors.length ? [...syncErrors, ...asyncErrors] : syncErrors;
     const errorsFor = (propertyName?: string) => errors.filter((e) => e.propertyName === propertyName);
     return {
       errors,
@@ -118,7 +118,7 @@ export function useValidation(model: unknown, modelType: string, options: UseVal
       messagesFor: (propertyName?: string) => errorsFor(propertyName).map((e) => e.errorMessage),
       revalidate,
     };
-  }, [syncErrors, asyncErrors, pending, revalidate]);
+  }, [errors, pending, revalidate]);
 }
 
 /**

@@ -56,9 +56,11 @@ export class OrderComponent {
   private readonly validation = inject(ValidationService);
 
   save(order: Order) {
-    const errors = this.validation.validateModelSync(order, 'Order');
-    if (errors.length) { this.show(errors); return; }
-    this.validation.validateModelAsync(order, 'Order').subscribe(asyncErrors => ...);
+    // Sync and async rules; emits all errors once
+    this.validation.validateModelAsync(order, 'Order').subscribe(errors => {
+      if (errors.length) { this.show(errors); return; }
+      ...
+    });
   }
 }
 ```

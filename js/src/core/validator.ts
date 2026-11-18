@@ -18,6 +18,12 @@ export interface Validator {
   /** Set by the framework to the metadata the validator was created from. */
   metadata?: ValidatorMetadata;
   validate(value: unknown, context?: ValidationContext): SyncValidationOutcome | AsyncValidationOutcome;
+  /**
+   * Optional, for sync validators: a complete check that may be asynchronous. `validateModelAsync` and `validate`
+   * use it instead of `validate`, so a validator whose source has both sync and async rules (such as `breeze`)
+   * needs only one metadata entry and runs each rule once.
+   */
+  validateAsync?(value: unknown, context?: ValidationContext): AsyncValidationOutcome;
 }
 
 /** Synchronous validation function: return true when the value is valid. */

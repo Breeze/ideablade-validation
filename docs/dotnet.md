@@ -58,7 +58,7 @@ public class OrdersController(ValidationService validation) : ControllerBase
 | Method | |
 |---|---|
 | `ValidateModel(model[, modelType], options)` | Sync validators only. Returns `IReadOnlyList<ValidationError>`, empty when valid. |
-| `ValidateModelAsync(model[, modelType], options, ct)` | **Sync and async** validators. (In TS, `validateModelAsync` runs only async ones; on the server it's more convenient to run everything.) Subject to `AsyncTimeout`. |
+| `ValidateModelAsync(model[, modelType], options, ct)` | **Sync and async** validators, as in TS. Subject to `AsyncTimeout`: on timeout the async validators count as valid and the sync errors are returned. |
 | `ValidateEntitiesAsync(IValidationEntityStore \| IEnumerable<object>, options, ct)` | Validates a set of entities, such as a save bundle. Honors model `condition`s. Expressions get `store(type)` and `findEntity(id, type)`. |
 | `HasAsyncValidators(modelType, predicate)` | |
 | `event ModelValidated` | Raised after each model validation |

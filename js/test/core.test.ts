@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   type EntityInfo,
   type ModelValidationMetadataMap,
+  type ValidatorFactory,
   ValidationConfigurationError,
   asyncValidator,
   createValidationService,
@@ -144,6 +145,52 @@ describe('ValidationService (async)', () => {
     expect(lookup).toHaveBeenCalledTimes(1);
   });
 
+  it('validateModelAsync runs sync and async validators', async () => {
+    expect((await firstValueFrom(service.validateModelAsync({ login: '' }, 'User'))).map((e) => e.errorMessage)).toEqual(['login is required']);
+  });
+
+  it('runs every validator once in validate() and validateModelAsync()', async () => {
+    const sync = vi.fn((v: string) => v !== 'x');
+    const slow = vi.fn((v: string) => of(v !== 'y').pipe(delay(1)));
+    const s = createValidationService({
+      metadata: { X: { properties: { a: { validators: ['s', { name: 'a', async: true }] } } } },
+      validators: [syncValidator('s', sync), asyncValidator('a', slow)],
+    });
+    await lastValueFrom(s.validate({ a: 'x' }, 'X'));
+    await firstValueFrom(s.validateModelAsync({ a: 'x' }, 'X'));
+    expect(sync).toHaveBeenCalledTimes(2);
+    expect(slow).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses validateAsync of a sync validator instead of validate in the async path', async () => {
+    const calls: string[] = [];
+    const both: ValidatorFactory = {
+      name: 'both',
+      fn: (group, context) => {
+        // The sync check fails, the full async check passes, so the result shows which one ran.
+        const v = syncValidator('both', () => (calls.push('sync'), false), 'sync check').fn(group, context);
+        v.validateAsync = () => (calls.push('async'), of(null).pipe(delay(1)));
+        return v;
+      },
+    };
+    const s = createValidationService({ metadata: { X: { validators: ['both'] } }, validators: [both] });
+    expect(s.hasAsyncValidators('X')).toBe(true);
+
+    expect(s.validateModelSync({}, 'X')).toHaveLength(1);
+    expect(calls.splice(0)).toEqual(['sync']);
+
+    expect(await firstValueFrom(s.validateModelAsync({}, 'X'))).toEqual([]);
+    expect(calls.splice(0)).toEqual(['async']);
+
+    // validate() shows the sync result while the async check runs
+    const states = await lastValueFrom(s.validate({}, 'X').pipe(toArray()));
+    expect(states.map((st) => [st.pending, st.errors.length])).toEqual([
+      [true, 1],
+      [false, 0],
+    ]);
+    expect(calls.splice(0)).toEqual(['sync', 'async']);
+  });
+
   it('emits an empty array when there are no async validators', async () => {
     expect(await firstValueFrom(service.validateModelAsync({}, 'Other'))).toEqual([]);
   });
@@ -175,6 +222,15 @@ describe('ValidationService (async)', () => {
     });
     expect(await firstValueFrom(s.validateModelAsync({ a: 1 }, 'X'))).toEqual([]);
     expect(onAsyncTimeout).toHaveBeenCalledOnce();
+  });
+
+  it('emits the sync errors when async validators time out', async () => {
+    const s = createValidationService({
+      metadata: { X: { properties: { a: { required: true, validators: [{ name: 'slow', async: true }] } } } },
+      validators: [asyncValidator('slow', () => of(false).pipe(delay(200)))],
+      asyncTimeout: 20,
+    });
+    expect((await firstValueFrom(s.validateModelAsync({ a: '' }, 'X'))).map((e) => e.key)).toEqual(['required_a']);
   });
 });
 

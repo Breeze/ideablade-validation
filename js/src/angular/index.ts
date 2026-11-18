@@ -247,7 +247,8 @@ export class FormValidators {
       return timer(debounceMs).pipe(
         switchMap(() =>
           this.validationService.validateModelAsync(withProperty(entity, propertyName, control.value), entityType, {
-            predicate: (v, p) => !!p && p.propertyName === propertyName && predicate(v, p),
+            // Only the async rules: Angular runs the sync ones through createSyncValidatorFn.
+            predicate: (v, p) => v.async && !!p && p.propertyName === propertyName && predicate(v, p),
             context: { ...context, originalModel: entity },
           }),
         ),

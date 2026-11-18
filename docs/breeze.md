@@ -26,6 +26,22 @@ The validator calls `entity.entityAspect.validateEntity()` and maps each Breeze 
 
 Non-entities are ignored.
 
+### Breeze async validators
+
+Breeze 3 validators can be async: a validator whose function returns a Promise (an `async` function, or one created with `isAsync: true`). Breeze runs them only where it can wait for the answer, on save and from `entityAspect.validateEntityAsync()`, not on property change.
+
+The single `"breeze"` entry covers them too. It follows the framework's rules for sync and async:
+
+| Call | Runs | Breeze call |
+|---|---|---|
+| `validateModelSync` | Breeze's sync validators | `validateEntity()` |
+| `validateModelAsync` | all of Breeze's validators, sync and async, each once | `validateEntityAsync()` |
+| `validate()`, `useValidation`, Angular signals | sync errors first (`pending: true`), then all errors | both |
+
+That's the same split Breeze makes itself: `validateEntityAsync()` is Breeze's complete check, the one it runs on save.
+
+The `breeze` validator skips errors from validators that `installBreezeValidators` added (section 2), so you can use both directions together without seeing the metadata rules twice.
+
 ## 2. This framework's rules inside Breeze (`installBreezeValidators`)
 
 When your UI binds to Breeze's validation errors, or you rely on Breeze validating before save, install the metadata rules into the `MetadataStore`:
@@ -44,7 +60,7 @@ For every entity type, this adds the following Breeze validators:
 
 - one **property-level** validator per property that has metadata rules. Breeze runs it on property change, and errors attach to that property.
 - one **entity-level** validator for model-level rules.
-- `…Async` variants when async rules exist.
+- `…Async` variants when async rules exist. They run only the async rules, so `validateEntityAsync()` and save don't report a sync rule twice.
 
 Inside these validators, `store(type)` resolves to `entity.entityAspect.entityManager.getEntities(type)`. The `breeze` validator is skipped, which prevents recursion.
 

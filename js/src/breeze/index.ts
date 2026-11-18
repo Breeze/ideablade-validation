@@ -3,7 +3,8 @@
  *
  * Two directions:
  * 1. Breeze → this framework: `breezeValidator` is a validator named `breeze` that runs Breeze's own
- *    validation (`entityAspect.validateEntity()`) and reports Breeze's errors as ValidationErrors.
+ *    validation and reports Breeze's errors as ValidationErrors: sync validators from `validateModelSync`, sync and
+ *    async validators (`validateEntityAsync()`, Breeze 3) from `validateModelAsync` and `validate`.
  *    Typically registered as a global validator in the metadata: `{ "global": { "validators": ["breeze"] } }`.
  * 2. This framework → Breeze: `installBreezeValidators` adds Breeze `Validator`s to the entity types of a
  *    MetadataStore so that Breeze's own validation (property changes, `validateEntity`, save) runs the metadata rules.
@@ -18,8 +19,9 @@ import {
   type MetadataStore,
   Validator as BreezeValidator,
   type ValidationMessageContext,
+  type ValidationError as BreezeValidationError,
 } from 'breeze-client';
-import { Observable, auditTime, firstValueFrom, map, startWith } from 'rxjs';
+import { Observable, auditTime, defer, firstValueFrom, map, startWith } from 'rxjs';
 
 import type { EntityInfo, ValidationContext, ValidationContextBase, ValidatorFunctionContext } from '../core/context.js';
 import type { ValidatorMetadata } from '../core/metadata.js';
@@ -37,7 +39,11 @@ export function breezeModelType(entity: Entity): string {
   return entity.entityType.shortName;
 }
 
-/** Validator `breeze`: runs Breeze's validation for the model (an entity) and maps the resulting errors. */
+/**
+ * Validator `breeze`: runs Breeze's validation for the model (an entity) and maps the resulting errors.
+ * `validateModelSync` runs Breeze's sync validators (`entityAspect.validateEntity()`). `validateModelAsync` and
+ * `validate` run all of them, sync and async (`entityAspect.validateEntityAsync()`, Breeze 3), the way Breeze does on save.
+ */
 export class BreezeValidationAdapter extends ValidatorBase implements Validator {
   readonly isAsync = false;
   declare metadata?: ValidatorMetadata;
@@ -51,35 +57,59 @@ export class BreezeValidationAdapter extends ValidatorBase implements Validator 
   }
 
   validate(value: unknown, context?: ValidationContext): ValidationError[] | null {
-    if (!isBreezeEntity(value) || (value.entityAspect as { [RUNNING]?: boolean })[RUNNING]) {
+    if (!isBreezeEntity(value) || isRunning(value)) {
       return null;
     }
-    if (value.entityAspect.validateEntity()) {
-      return null;
-    }
-    const ctx = this.getValidatorFunctionContext(value, context);
-    return value.entityAspect.getValidationErrors().map((breezeError) => {
-      const validatorCtx: Record<string, unknown> = { ...(breezeError.validator?.context ?? {}) };
-      for (const key of Object.keys(validatorCtx)) {
-        if (key.startsWith('$')) {
-          delete validatorCtx[key];
-        }
+    value.entityAspect.validateEntity();
+    // Errors left over from an earlier async run are not this (sync) run's result.
+    return mapBreezeErrors(this, value, this.getValidatorFunctionContext(value, context), (e) => !e.validator?.isAsync);
+  }
+
+  validateAsync(value: unknown, context?: ValidationContext): Observable<ValidationError[] | null> {
+    return defer(async () => {
+      if (!isBreezeEntity(value) || isRunning(value)) {
+        return null;
       }
-      const property = breezeError.propertyName ? ctx.metadata?.getProperty(breezeError.propertyName) : undefined;
-      const errorCtx = {
-        ...breezeError.context,
-        ...ctx,
-        ...validatorCtx,
-        propertyName: breezeError.propertyName ?? ctx.propertyName,
-        displayName: property?.displayName || breezeError.property?.displayName || ctx.displayName,
-        value: breezeError.propertyName ? getPath(value, breezeError.propertyName) : value,
-        // Breeze has already formatted the message; use it verbatim.
-        messageTemplate: breezeError.errorMessage,
-        breezeError,
-      } as ValidatorFunctionContext;
-      return new BreezeMappedValidationError(breezeError.key, errorCtx, this, breezeError.errorMessage);
+      await value.entityAspect.validateEntityAsync();
+      return mapBreezeErrors(this, value, this.getValidatorFunctionContext(value, context), () => true);
     });
   }
+}
+
+/** Maps the entity's current Breeze errors that pass `include` (skipping errors of validators installed by {@link installBreezeValidators}). */
+function mapBreezeErrors(
+  validator: Validator,
+  entity: Entity,
+  ctx: ValidatorFunctionContext,
+  include: (error: BreezeValidationError) => boolean,
+): ValidationError[] | null {
+  const breezeErrors = entity.entityAspect
+    .getValidationErrors()
+    .filter((e) => !(e.validator && INSTALLED.has(e.validator)) && include(e));
+  if (breezeErrors.length === 0) {
+    return null;
+  }
+  return breezeErrors.map((breezeError) => {
+    const validatorCtx: Record<string, unknown> = { ...(breezeError.validator?.context ?? {}) };
+    for (const key of Object.keys(validatorCtx)) {
+      if (key.startsWith('$')) {
+        delete validatorCtx[key];
+      }
+    }
+    const property = breezeError.propertyName ? ctx.metadata?.getProperty(breezeError.propertyName) : undefined;
+    const errorCtx = {
+      ...breezeError.context,
+      ...ctx,
+      ...validatorCtx,
+      propertyName: breezeError.propertyName ?? ctx.propertyName,
+      displayName: property?.displayName || breezeError.property?.displayName || ctx.displayName,
+      value: breezeError.propertyName ? getPath(entity, breezeError.propertyName) : entity,
+      // Breeze has already formatted the message; use it verbatim.
+      messageTemplate: breezeError.errorMessage,
+      breezeError,
+    } as ValidatorFunctionContext;
+    return new BreezeMappedValidationError(breezeError.key, errorCtx, validator, breezeError.errorMessage);
+  });
 }
 
 /** A ValidationError carrying a message already formatted by Breeze. */
@@ -103,6 +133,13 @@ export const breezeValidator: ValidatorFactory = { name: 'breeze', fn: BreezeVal
 
 /** Marker set on an entityAspect while metadata rules run from inside Breeze, to avoid recursion with the `breeze` validator. */
 const RUNNING = Symbol('ideablade-validation-running');
+
+/** Breeze validators added by {@link installBreezeValidators}; the `breeze` validators skip their errors. */
+const INSTALLED = new WeakSet<BreezeValidator>();
+
+function isRunning(entity: Entity): boolean {
+  return !!(entity.entityAspect as { [RUNNING]?: boolean })[RUNNING];
+}
 
 export interface InstallBreezeValidatorsOptions {
   /** Entity type short names to install on. Default: every entity type that has metadata or global validators. */
@@ -148,7 +185,8 @@ export function installBreezeValidators(
       const opts: ValidationOptions = {
         store: (type) => entity.entityAspect.entityManager?.getEntities(type) ?? [],
         ...options.validationOptions,
-        predicate: (v, p) => notBreeze(v) && userPredicate(v, p) && predicate!(v, p),
+        // The async Breeze validator runs only the async rules; the sync one already covers the others.
+        predicate: (v, p) => notBreeze(v) && (!async || v.async) && userPredicate(v, p) && predicate!(v, p),
       };
       const aspect = entity.entityAspect as { [RUNNING]?: boolean };
       aspect[RUNNING] = true;
@@ -177,7 +215,9 @@ export function installBreezeValidators(
         };
         return result instanceof Promise ? result.then(finish) : finish(result);
       };
-      return new BreezeValidator(name, valFn, context);
+      const validator = new BreezeValidator(name, valFn, context);
+      INSTALLED.add(validator);
+      return validator;
     };
 
     const modelLevel = (v: ValidatorMetadata, p?: unknown) => !p && notBreeze(v);

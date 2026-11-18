@@ -25,7 +25,7 @@ All of these are registered by default (`defaultValidators` in TS, `DefaultValid
 | `validValues` | `values` | same |
 | `expression` | `expression`, `skipEmpty` | `%displayName% is invalid` |
 | `unique` | `ignoreCase`. Needs `store(type)`, so it works in entity-store validation, with `options.store`, or with Breeze. | `%displayName% must be unique` |
-| `breeze` (TS, from `@ideablade/validation/breeze`) | | Breeze's own messages |
+| `breeze` (TS, from `@ideablade/validation/breeze`) | Breeze's sync validators, plus its async ones (Breeze 3) in `validateModelAsync` and `validate` | Breeze's own messages |
 
 ### Range bounds
 

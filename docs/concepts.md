@@ -36,10 +36,12 @@
 
 ## Sync vs. async
 
-- `validateModelSync(model, type)` returns `ValidationError[]` (empty when valid) and runs only sync validators.
-- `validateModelAsync(model, type)` returns a cold `Observable<ValidationError[]>` that emits once. It runs only async validators, with a timeout (`asyncTimeout`, default 60 s). On timeout it continues as valid and calls `onAsyncTimeout`.
-- `validate(model, type)` returns an `Observable<{ errors, pending }>`. It emits sync errors immediately, then the combined result. This is the best fit for UIs.
-- `validateEntityStore(store)` / `validateEntityStoreOneTime(store)` / `validateEntities(list)` validate many models at once.
+- `validateModelSync(model, type)` returns `ValidationError[]` (empty when valid). It runs only the sync validators, so it's immediate.
+- `validateModelAsync(model, type)` runs **all** validators, sync and async, and returns a cold `Observable<ValidationError[]>` that emits all errors once. One call is enough; you never need to combine it with `validateModelSync`. Async validators are subject to a timeout (`asyncTimeout`, default 60 s): on timeout they count as valid, the sync errors are emitted, and `onAsyncTimeout` is called. .NET's `ValidateModelAsync` behaves the same way.
+- `validate(model, type)` returns an `Observable<{ errors, pending }>`. It emits the sync errors immediately with `pending: true`, then all errors once the async validators finish. Every validator runs once. This is the best fit for UIs.
+- `validateEntityStore(store)` / `validateEntityStoreOneTime(store)` / `validateEntities(list)` validate many models at once, sync and async.
+
+A sync validator may also implement `validateAsync(value, context)`, a complete check that may be asynchronous. `validateModelAsync` calls it instead of `validate`, and `validate()` shows the sync result until it finishes. This is for validators whose source has both sync and async rules, such as [`breeze`](breeze.md): one metadata entry covers both, and each rule runs once.
 
 An exception thrown inside a validator (sync, async or a rejected promise) counts as a **validation failure**. The exception is available as `error.context.exception`. A broken *configuration* is a programmer error and **throws** a `ValidationConfigurationError`. That covers an unknown validator name, a failing condition expression, and a sync/async mismatch.
 

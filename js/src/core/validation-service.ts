@@ -27,7 +27,7 @@ import type {
 } from './context.js';
 import type { ConditionContextResolver, ModelMetadata, PropertyMetadata, ValidationMetadata, ValidatorMetadata } from './metadata.js';
 import type { ValidationError } from './validation-error.js';
-import type { AsyncValidationOutcome, SyncValidationOutcome } from './validator.js';
+import type { AsyncValidationOutcome, SyncValidationOutcome, Validator } from './validator.js';
 
 /** Decides whether a validator runs. Receives the property metadata for property validators. */
 export type ValidatorPredicate = (validator: ValidatorMetadata, property?: PropertyMetadata) => boolean;
@@ -120,63 +120,54 @@ export class ValidationService {
 
   /** Runs the synchronous validators for a model. Returns an empty array when valid. */
   validateModelSync(model: unknown, modelType: string, options?: ValidationOptions): ValidationError[] {
-    const outcomes = this.run(false, model, modelType, options) as SyncValidationOutcome[];
-    const errors = flatten(outcomes);
-    this.modelValidated.next({ modelInfo: { entity: model, entityType: modelType }, validationErrors: errors });
+    const errors = flatten(this.plan(model, modelType, options, true).map(runSync));
+    this.notify(model, modelType, errors);
     return errors;
   }
 
   /**
-   * Runs the asynchronous validators for a model. The returned observable is cold, emits once and completes.
-   * Emits an empty array when there are no asynchronous validators.
+   * Runs all validators for a model, sync and async, and emits all errors once. The observable is cold and completes.
+   * Async validators are subject to `asyncTimeout`: on timeout they count as valid and the sync errors are emitted.
+   * A sync validator that implements `validateAsync` (such as `breeze`) runs that instead of `validate`.
    */
   validateModelAsync(model: unknown, modelType: string, options?: ValidationOptions): Observable<ValidationError[]> {
     return defer(() => {
-      const outcomes = this.run(true, model, modelType, options) as AsyncValidationOutcome[];
-      if (outcomes.length === 0) {
-        return of([] as ValidationError[]);
+      const { syncErrors, async$ } = this.split(this.plan(model, modelType, options));
+      return this.complete(model, modelType, syncErrors, async$);
+    });
+  }
+
+  /**
+   * Runs all validators for a model. Emits the sync errors immediately (`pending: true` while async validators
+   * run) and then all errors once async validation completes. Every validator runs once.
+   */
+  validate(model: unknown, modelType: string, options?: ValidationOptions): Observable<ModelValidationState> {
+    return defer(() => {
+      const steps = this.plan(model, modelType, options);
+      // Validators with a full async check show their sync result while the async check runs.
+      const interimErrors = flatten(steps.filter((s) => !s.validator.isAsync && s.validator.validateAsync).map(runSync));
+      const { syncErrors, async$ } = this.split(steps);
+      if (async$.length === 0) {
+        this.notify(model, modelType, syncErrors);
+        return of({ errors: syncErrors, pending: false });
       }
-      let result$ = forkJoin(outcomes).pipe(map(flatten));
-      if (this.asyncTimeout > 0) {
-        result$ = result$.pipe(
-          timeout({
-            first: this.asyncTimeout,
-            with: () => {
-              this.onAsyncTimeout?.({ model, modelType, timeout: this.asyncTimeout });
-              return of([] as ValidationError[]);
-            },
-          }),
-        );
-      }
-      return result$.pipe(
-        tap((errors) => this.modelValidated.next({ modelInfo: { entity: model, entityType: modelType }, validationErrors: errors })),
+      return concat(
+        of({ errors: [...syncErrors, ...interimErrors], pending: true }),
+        this.complete(model, modelType, syncErrors, async$).pipe(map((errors) => ({ errors, pending: false }))),
       );
     });
   }
 
   /**
-   * Runs sync and async validators. Emits the sync errors immediately (`pending: true` if async validators
-   * are running) and then the combined errors once async validation completes.
+   * True if validating the model type involves asynchronous work: async validators, or sync validators with a
+   * `validateAsync` check (optionally filtered by a predicate).
    */
-  validate(model: unknown, modelType: string, options?: ValidationOptions): Observable<ModelValidationState> {
-    return defer(() => {
-      const syncErrors = this.validateModelSync(model, modelType, options);
-      if (!this.hasAsyncValidators(modelType, options?.predicate)) {
-        return of({ errors: syncErrors, pending: false });
-      }
-      return concat(
-        of({ errors: syncErrors, pending: true }),
-        this.validateModelAsync(model, modelType, options).pipe(map((asyncErrors) => ({ errors: [...syncErrors, ...asyncErrors], pending: false }))),
-      );
-    });
-  }
-
-  /** True if the model type has asynchronous validators (optionally filtered by a predicate). */
   hasAsyncValidators(modelType: string, predicate: ValidatorPredicate = all): boolean {
     const metadata = this.validationMetadata.getModelMetadata(modelType);
+    const isAsync = (v: ValidatorMetadata) => v.async || !!v.getValidator().validateAsync;
     return (
-      metadata.validators.some((v) => v.async && predicate(v)) ||
-      metadata.properties.some((p) => p.validators.some((v) => v.async && predicate(v, p)))
+      metadata.validators.some((v) => isAsync(v) && predicate(v)) ||
+      metadata.properties.some((p) => p.validators.some((v) => isAsync(v) && predicate(v, p)))
     );
   }
 
@@ -187,16 +178,14 @@ export class ValidationService {
   validateEntityStore(entityStore: EntityStore, options?: ValidationOptions): Observable<EntitiesValidationResult> {
     return this.trigger(entityStore, options).pipe(
       switchMap((entities) => {
-        if (entities.length === 0) {
+        const opts = this.withStore(entityStore, entities, options);
+        const valid = entities.length ? this.entitiesPassingCondition(entities, opts) : [];
+        if (valid.length === 0) {
           return of({ entities, validationErrors: [] as ValidationError[] });
         }
-        const opts = this.withStore(entityStore, entities, options);
-        const valid = this.entitiesPassingCondition(entities, opts);
-        const sync$ = of(valid.flatMap((ei) => this.validateModelSync(ei.entity, ei.entityType, opts)));
-        const async$ = valid
-          .filter((ei) => this.hasAsyncValidators(ei.entityType, opts.predicate))
-          .map((ei) => this.validateModelAsync(ei.entity, ei.entityType, opts).pipe(startWith([] as ValidationError[])));
-        return combineLatest([sync$, ...async$]).pipe(map((results) => ({ entities, validationErrors: results.flat() })));
+        return combineLatest(valid.map((ei) => this.validate(ei.entity, ei.entityType, opts).pipe(map((s) => s.errors)))).pipe(
+          map((results) => ({ entities, validationErrors: results.flat() })),
+        );
       }),
       shareReplay({ bufferSize: 1, refCount: true }),
     );
@@ -213,19 +202,14 @@ export class ValidationService {
   /** Validates a list of entities once (sync and async) and completes. */
   validateEntities(entities: EntityInfo[], options?: ValidationOptions): Observable<EntitiesValidationResult> {
     return defer(() => {
-      if (entities.length === 0) {
+      const opts: ValidationOptions = { store: storeFromEntities(entities), ...options };
+      const valid = entities.length ? this.entitiesPassingCondition(entities, opts) : [];
+      if (valid.length === 0) {
         return of({ entities, validationErrors: [] as ValidationError[] });
       }
-      const opts: ValidationOptions = { store: storeFromEntities(entities), ...options };
-      const valid = this.entitiesPassingCondition(entities, opts);
-      const syncErrors = valid.flatMap((ei) => this.validateModelSync(ei.entity, ei.entityType, opts));
-      const async$ = valid
-        .filter((ei) => this.hasAsyncValidators(ei.entityType, opts.predicate))
-        .map((ei) => this.validateModelAsync(ei.entity, ei.entityType, opts));
-      if (async$.length === 0) {
-        return of({ entities, validationErrors: syncErrors });
-      }
-      return forkJoin(async$).pipe(map((results) => ({ entities, validationErrors: [...syncErrors, ...results.flat()] })));
+      return forkJoin(valid.map((ei) => this.validateModelAsync(ei.entity, ei.entityType, opts))).pipe(
+        map((results) => ({ entities, validationErrors: results.flat() })),
+      );
     });
   }
 
@@ -256,7 +240,54 @@ export class ValidationService {
     };
   }
 
-  private run(isAsync: boolean, model: unknown, modelType: string, options?: ValidationOptions): (SyncValidationOutcome | AsyncValidationOutcome)[] {
+  /** Runs the sync part of the steps and starts the async part (async validators and `validateAsync` checks). */
+  private split(steps: Step[]): { syncErrors: ValidationError[]; async$: AsyncValidationOutcome[] } {
+    const syncErrors: ValidationError[] = [];
+    const async$: AsyncValidationOutcome[] = [];
+    for (const step of steps) {
+      const { validator, value, context } = step;
+      if (validator.isAsync) {
+        const outcome = validator.validate(value, context);
+        async$.push(isObservable(outcome) ? outcome : of(outcome));
+      } else if (validator.validateAsync) {
+        async$.push(validator.validateAsync(value, context));
+      } else {
+        syncErrors.push(...flatten([runSync(step)]));
+      }
+    }
+    return { syncErrors, async$ };
+  }
+
+  /** Waits for the async outcomes (with the timeout) and emits the sync errors plus the async errors. */
+  private complete(model: unknown, modelType: string, syncErrors: ValidationError[], async$: AsyncValidationOutcome[]): Observable<ValidationError[]> {
+    if (async$.length === 0) {
+      this.notify(model, modelType, syncErrors);
+      return of(syncErrors);
+    }
+    let asyncErrors$ = forkJoin(async$).pipe(map(flatten));
+    if (this.asyncTimeout > 0) {
+      asyncErrors$ = asyncErrors$.pipe(
+        timeout({
+          first: this.asyncTimeout,
+          with: () => {
+            this.onAsyncTimeout?.({ model, modelType, timeout: this.asyncTimeout });
+            return of([] as ValidationError[]);
+          },
+        }),
+      );
+    }
+    return asyncErrors$.pipe(
+      map((asyncErrors) => [...syncErrors, ...asyncErrors]),
+      tap((errors) => this.notify(model, modelType, errors)),
+    );
+  }
+
+  private notify(model: unknown, modelType: string, errors: ValidationError[]): void {
+    this.modelValidated.next({ modelInfo: { entity: model, entityType: modelType }, validationErrors: errors });
+  }
+
+  /** The validators to run for a model, with their values and contexts. Applies the predicate and conditions. */
+  private plan(model: unknown, modelType: string, options?: ValidationOptions, syncOnly = false): Step[] {
     const metadata: ModelMetadata = this.validationMetadata.getModelMetadata(modelType);
     const predicate = options?.predicate ?? all;
     const resolver = options?.conditionContextResolver;
@@ -277,40 +308,46 @@ export class ValidationService {
       expressionScope: this.buildExpressionScope(options),
     };
 
-    const outcomes: (SyncValidationOutcome | AsyncValidationOutcome)[] = [];
-    const execute = (validatorMetadata: ValidatorMetadata, value: unknown, context: ValidationContext) => {
-      if (!validatorMetadata.evalCondition(context, resolver)) {
-        return;
-      }
-      const outcome = validatorMetadata.getValidator().validate(value, context);
-      if (isAsync) {
-        outcomes.push(isObservable(outcome) ? outcome : of(outcome));
-      } else if (!isObservable(outcome)) {
-        outcomes.push(outcome);
+    const steps: Step[] = [];
+    const add = (validatorMetadata: ValidatorMetadata, value: unknown, context: ValidationContext) => {
+      if ((!syncOnly || !validatorMetadata.async) && validatorMetadata.evalCondition(context, resolver)) {
+        steps.push({ validator: validatorMetadata.getValidator(), value, context });
       }
     };
 
     for (const validatorMetadata of metadata.validators) {
-      if (validatorMetadata.async === isAsync && predicate(validatorMetadata)) {
-        execute(validatorMetadata, model, { ...base, ...(validatorMetadata.context as ValidationContextBase) } as ValidationContext);
+      if (predicate(validatorMetadata)) {
+        add(validatorMetadata, model, { ...base, ...(validatorMetadata.context as ValidationContextBase) } as ValidationContext);
       }
     }
 
     for (const property of metadata.properties) {
       for (const validatorMetadata of property.validators) {
-        if (validatorMetadata.async === isAsync && predicate(validatorMetadata, property)) {
+        if (predicate(validatorMetadata, property)) {
           const context = {
             ...base,
             propertyName: property.propertyName,
             displayName: property.displayName,
             ...(validatorMetadata.context as ValidationContextBase),
           } as ValidationContext;
-          execute(validatorMetadata, property.getValue(model), context);
+          add(validatorMetadata, property.getValue(model), context);
         }
       }
     }
-    return outcomes;
+    return steps;
   }
+}
+
+/** A validator to run, with its value and context. */
+interface Step {
+  validator: Validator;
+  value: unknown;
+  context: ValidationContext;
+}
+
+function runSync(step: Step): SyncValidationOutcome {
+  const outcome = step.validator.validate(step.value, step.context);
+  return isObservable(outcome) ? null : outcome;
 }
 
 function storeFromEntities(entities: readonly EntityInfo[]): StoreQuery {

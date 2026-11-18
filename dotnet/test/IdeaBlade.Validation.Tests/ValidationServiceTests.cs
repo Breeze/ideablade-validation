@@ -196,6 +196,21 @@ public class ValidationServiceTests
         Assert.Equal(1, timedOut);
     }
 
+    [Fact]
+    public async Task ValidateModelAsyncRunsSyncAndAsyncAndKeepsSyncErrorsOnTimeout()
+    {
+        var map = ModelValidationMetadataMap.Parse("{\"X\": {\"properties\": {\"a\": {\"required\": true, \"validators\": [{\"name\": \"slow\", \"async\": true}]}}}}");
+        var fast = CreateService(map, new[] { ValidatorFactory.Async("slow", (v, c, ct) => Task.FromResult(!Equals(v, "taken")), "%displayName% is taken") });
+        var ct = TestContext.Current.CancellationToken;
+        Assert.Equal(new[] { "required_a" }, (await fast.ValidateModelAsync(new Dictionary<string, object?> { ["a"] = "" }, "X", cancellationToken: ct)).Select(e => e.Key));
+        Assert.Equal(new[] { "slow_a" }, (await fast.ValidateModelAsync(new Dictionary<string, object?> { ["a"] = "taken" }, "X", cancellationToken: ct)).Select(e => e.Key));
+
+        var slow = CreateService(map,
+            new[] { ValidatorFactory.Async("slow", async (v, c, t) => { await Task.Delay(2000, t); return false; }) },
+            options: new ValidationServiceOptions { AsyncTimeout = TimeSpan.FromMilliseconds(20) });
+        Assert.Equal(new[] { "required_a" }, (await slow.ValidateModelAsync(new Dictionary<string, object?> { ["a"] = "" }, "X", cancellationToken: ct)).Select(e => e.Key));
+    }
+
     public class Order { public int Id { get; set; } public string? Number { get; set; } public bool IsArchived { get; set; } }
     public class OrderLine { public int Id { get; set; } public int OrderId { get; set; } }
 
