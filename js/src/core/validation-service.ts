@@ -1,18 +1,24 @@
 import {
+  type MonoTypeOperatorFunction,
   type Observable,
   Subject,
+  auditTime,
   combineLatest,
   concat,
   concatMap,
+  connect,
   defer,
   first,
   forkJoin,
   isObservable,
   map,
+  merge,
   of,
   shareReplay,
+  skip,
   startWith,
   switchMap,
+  take,
   tap,
   timeout,
 } from 'rxjs';
@@ -44,13 +50,37 @@ export interface ModelValidationState {
   pending: boolean;
 }
 
-/** A source of entities to validate (e.g. a Breeze EntityManager, an NgRx store, a list). */
-export interface EntityStore {
+/**
+ * A source of entities to validate (e.g. a Breeze EntityManager, an NgRx store, a list), in one of two shapes:
+ * an Observable of the entities, or change notifications plus a reader. Prefer the second for sources that raise
+ * many change events: the service reads the entities once per coalesced burst instead of once per event.
+ * {@link createEntityStore} builds one from events, callbacks or signals.
+ */
+export type EntityStore = ObservableEntityStore | NotifyingEntityStore;
+
+/** An {@link EntityStore} that emits its entities whenever they change. */
+export interface ObservableEntityStore {
   /** Emits the current entities whenever they change. */
   entities$: Observable<EntityInfo[]>;
   /** Optional fast lookup used for the `store(entityType)` expression function. */
   getEntities?: StoreQuery;
 }
+
+/** An {@link EntityStore} that signals changes; the service reads its entities when it validates. */
+export interface NotifyingEntityStore {
+  /** Emits whenever the entities change. What it emits is ignored. */
+  changes$: Observable<unknown>;
+  /** Returns the current entities. Read once at the start and once per (coalesced) change. */
+  entities(): readonly EntityInfo[];
+  /** Optional fast lookup used for the `store(entityType)` expression function. */
+  getEntities?: StoreQuery;
+}
+
+/**
+ * How entity store validation coalesces bursts of changes: a window in ms that starts at the first change of a
+ * burst (default 0), or `false` to validate on every change. The first validation always runs immediately.
+ */
+export type Coalesce = number | false;
 
 export interface ValidationOptions {
   /** Controls which validators run. */
@@ -65,6 +95,8 @@ export interface ValidationOptions {
   store?: StoreQuery;
   /** Additional trusted functions/values visible to expressions for this call. */
   expressionScope?: Record<string, unknown>;
+  /** Entity store validation: overrides {@link ValidationServiceOptions.coalesce} for this call. */
+  coalesce?: Coalesce;
 }
 
 /**
@@ -89,6 +121,16 @@ export interface ValidationServiceOptions {
    */
   asyncTimeout?: number;
   onAsyncTimeout?: (info: { model: unknown; modelType: string; timeout: number }) => void;
+  /**
+   * Coalesces bursts of entity store changes into one validation run. Sources often change many times in a row,
+   * such as a query that adds 500 entities with one change event each; without coalescing, each change would
+   * re-validate the whole store. Default 0: after the first validation, which runs immediately, changes made in
+   * the same synchronous block cause a single run once the block finishes. A number collects the changes for that
+   * many ms after the first one, then runs once (so a source that never stops changing is still validated regularly);
+   * `false` validates on every change. Applies to every trigger: store changes, metadata changes,
+   * `options.event$` and {@link ValidationService.revalidate}.
+   */
+  coalesce?: Coalesce;
 }
 
 const all: ValidatorPredicate = () => true;
@@ -109,6 +151,7 @@ export class ValidationService {
   private readonly expressionScope: Record<string, unknown>;
   private readonly asyncTimeout: number;
   private readonly onAsyncTimeout?: ValidationServiceOptions['onAsyncTimeout'];
+  private readonly coalesce: Coalesce;
 
   constructor(
     readonly validationMetadata: ValidationMetadata,
@@ -119,6 +162,7 @@ export class ValidationService {
     this.expressionScope = options.expressionScope ?? {};
     this.asyncTimeout = options.asyncTimeout ?? 60_000;
     this.onAsyncTimeout = options.onAsyncTimeout;
+    this.coalesce = options.coalesce ?? 0;
   }
 
   /** The model type of `model` from the {@link ValidationServiceOptions.modelTypeResolvers}, or undefined. */
@@ -238,12 +282,18 @@ export class ValidationService {
   }
 
   private trigger(entityStore: EntityStore, options?: ValidationOptions): Observable<EntityInfo[]> {
+    // A notifying store is read only after coalescing, so a burst of changes costs one read, not one per change.
+    const read = 'entities$' in entityStore ? undefined : () => Array.from(entityStore.entities());
+    const source$: Observable<unknown> = 'entities$' in entityStore ? entityStore.entities$ : entityStore.changes$.pipe(startWith(null));
     return combineLatest([
-      entityStore.entities$,
+      source$,
       this.validationMetadata.metadataChanged$.pipe(startWith(this.validationMetadata)),
       options?.event$ ? options.event$.pipe(startWith(null)) : of(null),
       this.revalidateRequested.pipe(startWith(null)),
-    ]).pipe(map(([entities]) => entities));
+    ]).pipe(
+      coalesceAfterFirst(options?.coalesce ?? this.coalesce),
+      map(([entities]) => (read ? read() : (entities as EntityInfo[]))),
+    );
   }
 
   private withStore(entityStore: EntityStore, entities: EntityInfo[], options?: ValidationOptions): ValidationOptions {
@@ -372,6 +422,14 @@ interface Step {
 function runSync(step: Step): SyncValidationOutcome {
   const outcome = step.validator.validate(step.value, step.context);
   return isObservable(outcome) ? null : outcome;
+}
+
+/** Passes the first value through at once, then emits the latest value of each burst ({@link Coalesce}). */
+function coalesceAfterFirst<T>(coalesce: Coalesce): MonoTypeOperatorFunction<T> {
+  if (coalesce === false) {
+    return (source) => source;
+  }
+  return connect((shared) => merge(shared.pipe(take(1)), shared.pipe(skip(1), auditTime(coalesce))));
 }
 
 function storeFromEntities(entities: readonly EntityInfo[]): StoreQuery {

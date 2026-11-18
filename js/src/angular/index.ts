@@ -18,6 +18,7 @@ import * as i0 from '@angular/core';
 import {
   type EnvironmentProviders,
   InjectionToken,
+  type Injector,
   type OnChanges,
   type Provider,
   type Signal,
@@ -26,6 +27,7 @@ import {
   inject,
   input,
   makeEnvironmentProviders,
+  untracked,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import {
@@ -38,15 +40,17 @@ import {
   type Validator,
   type ValidatorFn,
 } from '@angular/forms';
-import { type Observable, Subject, map, of, switchMap, timer } from 'rxjs';
+import { type Observable, Subject, filter, map, of, switchMap, timer } from 'rxjs';
 
-import type { EntityInfo, GlobalValidationContext, ValidatorContextProvider } from '../core/context.js';
+import type { EntityInfo, GlobalValidationContext, StoreQuery, ValidatorContextProvider } from '../core/context.js';
+import { createEntityStore } from '../core/entity-store.js';
 import type { ModelValidationMetadataLike } from '../core/metadata-config.js';
 import { ValidationMetadata } from '../core/metadata.js';
 import type { ValidationError } from '../core/validation-error.js';
 import {
   type ModelTypeResolver,
   type ModelValidationState,
+  type NotifyingEntityStore,
   type ValidationOptions,
   ValidationService,
   type ValidationServiceOptions,
@@ -70,12 +74,12 @@ export const VALIDATION_MODEL_TYPE_RESOLVER = new InjectionToken<ModelTypeResolv
 export const VALIDATION_EXPRESSION_SCOPE = new InjectionToken<Record<string, unknown>[]>('IdeaBlade.ValidationExpressionScope');
 /** Replaces the default safe expression evaluator. */
 export const VALIDATION_EXPRESSION_EVALUATOR = new InjectionToken<ExpressionEvaluator>('IdeaBlade.ValidationExpressionEvaluator');
-/** Service options (async timeout...). */
-export const VALIDATION_SERVICE_OPTIONS = new InjectionToken<Pick<ValidationServiceOptions, 'asyncTimeout' | 'onAsyncTimeout'>>(
+/** Service options (async timeout, coalescing). */
+export const VALIDATION_SERVICE_OPTIONS = new InjectionToken<Pick<ValidationServiceOptions, 'asyncTimeout' | 'onAsyncTimeout' | 'coalesce'>>(
   'IdeaBlade.ValidationServiceOptions',
 );
 
-export interface ValidationConfig extends Pick<ValidationServiceOptions, 'asyncTimeout' | 'onAsyncTimeout'> {
+export interface ValidationConfig extends Pick<ValidationServiceOptions, 'asyncTimeout' | 'onAsyncTimeout' | 'coalesce'> {
   /** Metadata maps (more can be added with {@link provideValidationMetadata} or `ValidationMetadata.setMetadata`). */
   metadata?: ModelValidationMetadataLike;
   /** Additional validator factories. */
@@ -117,7 +121,7 @@ export function provideValidation(config: ValidationConfig = {}): EnvironmentPro
         }),
     },
     { provide: FormValidators, useFactory: () => new FormValidators(inject(ValidationService)) },
-    { provide: VALIDATION_SERVICE_OPTIONS, useValue: { asyncTimeout: config.asyncTimeout, onAsyncTimeout: config.onAsyncTimeout } },
+    { provide: VALIDATION_SERVICE_OPTIONS, useValue: { asyncTimeout: config.asyncTimeout, onAsyncTimeout: config.onAsyncTimeout, coalesce: config.coalesce } },
   ];
   if (config.includeDefaultValidators ?? true) {
     providers.push(...provideValidators(...defaultValidators));
@@ -196,6 +200,29 @@ export function validationState(model: Signal<unknown>, modelType: string, optio
   const service = inject(ValidationService);
   const state$ = toObservable(model).pipe(switchMap((m) => service.validate(m, modelType, options)));
   return toSignal(state$, { initialValue: { errors: [], pending: true } }) as Signal<ModelValidationState>;
+}
+
+/**
+ * An {@link EntityStore} over signals: re-validates whenever a signal read by `entities` changes. Must be called in
+ * an injection context, or pass an `injector`.
+ *
+ * @example
+ * readonly orders = signal<Order[]>([]);
+ * readonly result = toSignal(inject(ValidationService).validateEntityStore(
+ *   signalEntityStore(() => this.orders().map((entity) => ({ entityType: 'Order', entity })))));
+ */
+export function signalEntityStore(
+  entities: () => readonly EntityInfo[],
+  options: { injector?: Injector; getEntities?: StoreQuery } = {},
+): NotifyingEntityStore {
+  const source = computed(entities);
+  let read: readonly EntityInfo[] | undefined;
+  return createEntityStore({
+    entities: () => (read = untracked(source)),
+    // toObservable emits the current value from an effect; skip values the service has already read.
+    changes: toObservable(source, { injector: options.injector }).pipe(filter((value) => value !== read)),
+    getEntities: options.getEntities,
+  });
 }
 
 /** Shorthand for `inject(ValidationService)`. */

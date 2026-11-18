@@ -279,7 +279,8 @@ describe('ValidationService (entity store)', () => {
   it('re-validates when entities change, metadata changes or revalidate() is called', async () => {
     const service = createValidationService({ metadata: md });
     const entities$ = new BehaviorSubject<EntityInfo[]>([{ entityType: 'Order', entity: { id: 1, number: '' } }]);
-    const results$ = service.validateEntityStore({ entities$ }).pipe(take(4), toArray());
+    // coalesce: false so that each trigger causes its own run (by default this synchronous burst is one run).
+    const results$ = service.validateEntityStore({ entities$ }, { coalesce: false }).pipe(take(4), toArray());
     const done = lastValueFrom(results$);
     entities$.next([{ entityType: 'Order', entity: { id: 1, number: 'X' } }, { entityType: 'OrderLine', entity: { orderId: 1 } }]);
     service.validationMetadata.setMetadata([]);

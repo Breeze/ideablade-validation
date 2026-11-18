@@ -72,6 +72,19 @@ Validate everything in a Breeze manager and show a live error list:
 readonly result = toSignal(inject(ValidationService).validateEntityStore(breezeEntityStore(this.manager)));
 ```
 
+### Validating a set of entities
+
+When the entities live in signals, `signalEntityStore` creates the store. It re-validates whenever a signal it reads changes. Call it in an injection context, or pass `{ injector }`.
+
+```ts
+readonly orders = signal<Order[]>([]);
+readonly result = toSignal(inject(ValidationService).validateEntityStore(
+  signalEntityStore(() => this.orders().map((entity) => ({ entityType: 'Order', entity }))),
+));
+```
+
+For other sources, see [Writing an entity store](concepts.md#writing-an-entity-store).
+
 ## Signals
 
 ```ts

@@ -199,14 +199,14 @@ describe('breezeEntityStore', () => {
     deleted.entityAspect.setDeleted();
     expect(deleted.entityAspect.entityState).toBe(EntityState.Deleted); // still in the manager until saved
 
-    const store = breezeEntityStore(manager, { auditTime: -1 });
+    const store = breezeEntityStore(manager);
     expect(store.getEntities!('Customer')).toEqual([kept]);
     const result = await firstValueFrom(service.validateEntityStore(store));
     expect(result.entities.map((ei) => ei.entity)).toEqual([kept]);
     expect(result.validationErrors).toHaveLength(1);
 
     // Deleted entities are included only when asked for.
-    const all = breezeEntityStore(manager, { auditTime: -1, entityStates: [EntityState.Unchanged, EntityState.Deleted] });
+    const all = breezeEntityStore(manager, { entityStates: [EntityState.Unchanged, EntityState.Deleted] });
     expect(all.getEntities!('Customer')).toHaveLength(2);
   });
 });

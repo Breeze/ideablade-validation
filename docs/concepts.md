@@ -31,8 +31,47 @@
 | **Context provider** | `{ contextFn(model, modelType) }`, registered in DI. Use it to make application services available to validators (the current user, a lookup cache…) without putting them in metadata. |
 | **Condition** | An expression on a validator: it runs only when the condition is truthy. On a model, a condition decides whether the model is validated at all during entity-store validation. See [expressions.md](expressions.md). |
 | **Group** | `{ "group": "submit", "validators": [...] }`. Groups let you run subsets of rules, for example only the rules for a workflow step. Choose them with `options.predicate`. Grouped validators also get distinct error keys (`required_submit_email`). |
-| **Entity store** | `{ entities$, getEntities? }`: any source of entities. `validateEntityStore` re-validates whenever the entities change, the metadata changes, `options.event$` emits, or `revalidate()` is called. Use `breezeEntityStore(manager)` for Breeze. |
+| **Entity store** | Any source of entities: `{ entities$, getEntities? }`, or `{ changes$, entities(), getEntities? }` for sources that only signal changes. `validateEntityStore` re-validates whenever the entities change, the metadata changes, `options.event$` emits, or `revalidate()` is called, and it coalesces bursts of those changes ([coalescing](#coalescing)). Use `breezeEntityStore(manager)` for Breeze, `signalEntityStore` for Angular signals, and `createEntityStore` for anything else ([below](#writing-an-entity-store)). |
 | **ValidationError** | `key` (`name[_group][_property]`), `id` (from metadata, else `key`), `propertyName`, `model`, `modelType`, `value`, `errorMessage`, and the full `context`. |
+
+## Writing an entity store
+
+Most data sources don't expose an Observable of their entities. They raise events, call listeners, or update signals. `createEntityStore` turns such a source into an entity store. You give it two things:
+
+- `entities()`, which returns the current entities as `{ entityType, entity }` pairs;
+- `changes`, which tells the store when the source changed. This is a function that starts listening, calls `notify` on every change, and returns how to stop listening. It can return a function, an object with `unsubscribe()`, or nothing. An Observable works too.
+
+```ts
+import { createEntityStore } from '@ideablade/validation';
+
+const store = createEntityStore({
+  entities: () => cart.items.map((entity) => ({ entityType: 'CartItem', entity })),
+  changes: (notify) => {
+    cart.addEventListener('change', notify);
+    return () => cart.removeEventListener('change', notify);
+  },
+  // getEntities: (type) => cart.itemsOfType(type),   // optional fast store(type)
+});
+```
+
+For signal libraries whose `effect()` returns a disposer, such as Preact or Solid, `changes` is one line: `(notify) => effect(() => { items.value; notify(); })`. For Angular signals, use `signalEntityStore` from `@ideablade/validation/angular` ([angular.md](angular.md#validating-a-set-of-entities)).
+
+Don't batch the notifications yourself: the validation service coalesces them (next section). The store it returns has the `{ changes$, entities() }` shape, so the service reads `entities()` once per coalesced burst rather than once per change.
+
+Without `getEntities`, `store(type)` in expressions and the `unique` validator filter the latest `entities()` snapshot.
+
+## Coalescing
+
+Entity stores often change many times in a row. Breeze, for example, raises one change event for every entity a query returns, and an Observable store may emit a new array for every little change. Re-validating the whole store on each change would mean loading 500 entities validates the store 500 times.
+
+`validateEntityStore` therefore coalesces bursts of changes. This happens in the service, so it applies to every kind of store and to every trigger: store changes, metadata changes, `options.event$` and `revalidate()`.
+
+- The first validation runs immediately.
+- After that, by default (`coalesce: 0`), changes made in the same synchronous block, such as all the events of one query, result in a single run once the block finishes. It uses the latest entities.
+- A number of milliseconds collects the changes for that long after the first one, then runs once. A source that never stops changing is still validated at that interval.
+- `coalesce: false` validates on every single change.
+
+Set it for the service with `createValidationService({ coalesce })` (Angular: `provideValidation({ coalesce })`), or per call with `validateEntityStore(store, { coalesce })`.
 
 ## Sync vs. async
 

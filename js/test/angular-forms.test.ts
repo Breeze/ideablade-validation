@@ -1,14 +1,14 @@
 // @vitest-environment jsdom
-// Template-driven forms, rendered with TestBed. JIT links the directives' partial declarations at runtime.
+// Template-driven forms and signal entity stores, with TestBed. JIT links the directives' partial declarations at runtime.
 import '@angular/compiler';
-import { Component, provideZonelessChangeDetection } from '@angular/core';
+import { Component, provideZonelessChangeDetection, signal } from '@angular/core';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormsModule, NgModel } from '@angular/forms';
 import { BrowserTestingModule, platformBrowserTesting } from '@angular/platform-browser/testing';
 import { By } from '@angular/platform-browser';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { ValidationFormsDirectives, provideValidation } from '../src/angular/index.js';
+import { ValidationFormsDirectives, ValidationService, provideValidation, signalEntityStore } from '../src/angular/index.js';
 import type { ValidationError } from '../src/core/validation-error.js';
 import { asyncValidator } from '../src/index.js';
 
@@ -141,5 +141,33 @@ describe('Template-driven forms', () => {
     expect(messages('code')).toEqual(['Code is required']);
     // Rules without a group don't run for the 'submit' group.
     expect(control('name').valid).toBe(true);
+  });
+});
+
+describe('signalEntityStore', () => {
+  it('re-validates when a signal changes, once per change', async () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection(), provideValidation({ metadata })] });
+    const notes = signal([{ text: 'a' }]);
+    let reads = 0;
+    const store = TestBed.runInInjectionContext(() =>
+      signalEntityStore(() => {
+        reads++;
+        return notes().map((entity) => ({ entityType: 'Note', entity }));
+      }),
+    );
+    const results: string[][] = [];
+    const sub = TestBed.inject(ValidationService)
+      .validateEntityStore(store)
+      .subscribe((r) => results.push(r.validationErrors.map((e) => e.errorMessage)));
+    TestBed.tick();
+    expect(results).toEqual([[]]);
+
+    notes.set([{ text: 'a' }, { text: '' }]);
+    TestBed.tick();
+    await new Promise((resolve) => setTimeout(resolve, 0)); // the service coalesces changes
+    expect(results).toEqual([[], ['Text is required']]);
+    expect(reads).toBe(2);
+    sub.unsubscribe();
   });
 });

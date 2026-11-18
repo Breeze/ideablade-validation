@@ -4,6 +4,7 @@ export * from './core/metadata-config.js';
 export * from './core/metadata.js';
 export * from './core/validation-error.js';
 export * from './core/validation-service.js';
+export * from './core/entity-store.js';
 export * from './core/validator.js';
 
 // Validators

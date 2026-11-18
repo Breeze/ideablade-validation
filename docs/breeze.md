@@ -78,7 +78,7 @@ validationService
 
 The store:
 
-- emits on every `entityChanged` event, coalesced with `auditTime(0)` by default (`auditTime: -1` makes it synchronous);
+- re-validates on `entityChanged`. The validation service coalesces bursts of events, such as one per entity a query returns, into a single run ([coalescing](concepts.md#coalescing));
 - excludes deleted and detached entities. A deleted entity stays in the manager until it's saved, but it's on its way out, so it isn't validated and doesn't count for `unique`. To include deleted entities anyway, pass `entityStates`, such as `[EntityState.Unchanged, EntityState.Added, EntityState.Modified, EntityState.Deleted]`;
 - serves `store(type)` from `manager.getEntities(type)`, with the same states.
 

@@ -21,12 +21,13 @@ import {
   type ValidationMessageContext,
   type ValidationError as BreezeValidationError,
 } from 'breeze-client';
-import { Observable, auditTime, defer, firstValueFrom, map, startWith } from 'rxjs';
+import { type Observable, defer, firstValueFrom } from 'rxjs';
 
 import type { EntityInfo, ValidationContext, ValidationContextBase, ValidatorFunctionContext } from '../core/context.js';
+import { createEntityStore } from '../core/entity-store.js';
 import type { ValidatorMetadata } from '../core/metadata.js';
 import { ValidationError, getPath } from '../core/validation-error.js';
-import type { EntityStore, ModelTypeResolver, ValidationOptions, ValidationService } from '../core/validation-service.js';
+import type { ModelTypeResolver, NotifyingEntityStore, ValidationOptions, ValidationService } from '../core/validation-service.js';
 import { type Validator, ValidatorBase, type ValidatorFactory } from '../core/validator.js';
 
 /** True for Breeze entities (objects with an entityAspect). */
@@ -264,8 +265,6 @@ export interface BreezeEntityStoreOptions {
    * (the `unique` validator, expressions). Detached entities are never included.
    */
   entityStates?: EntityState[];
-  /** Coalesce bursts of entity changes (ms). Default 0 (one emission per macrotask). Use -1 to emit synchronously. */
-  auditTime?: number;
 }
 
 const LIVE_STATES = [EntityState.Unchanged, EntityState.Added, EntityState.Modified];
@@ -274,26 +273,17 @@ const LIVE_STATES = [EntityState.Unchanged, EntityState.Added, EntityState.Modif
  * Wraps a Breeze EntityManager as an {@link EntityStore}; emits whenever entities are added, removed or changed.
  * Deleted and detached entities are left out by default (see {@link BreezeEntityStoreOptions.entityStates}).
  */
-export function breezeEntityStore(manager: EntityManager, options: BreezeEntityStoreOptions = {}): EntityStore {
+export function breezeEntityStore(manager: EntityManager, options: BreezeEntityStoreOptions = {}): NotifyingEntityStore {
   const states = (options.entityStates ?? LIVE_STATES).filter((s) => !s.isDetached());
   const query = (entityTypes?: string | string[]) => manager.getEntities(entityTypes, states) as Entity[];
-  const read = (): EntityInfo[] =>
-    query(options.entityTypes).map((entity) => ({ entityType: entity.entityType.shortName, entity }));
-
-  const changes$ = new Observable<void>((subscriber) => {
-    const token = manager.entityChanged.subscribe(() => subscriber.next());
-    return () => manager.entityChanged.unsubscribe(token);
+  return createEntityStore({
+    entities: () => query(options.entityTypes).map((entity) => ({ entityType: entity.entityType.shortName, entity })),
+    changes: (notify) => {
+      const token = manager.entityChanged.subscribe(notify);
+      return () => manager.entityChanged.unsubscribe(token);
+    },
+    getEntities: (entityType) => query(entityType),
   });
-  const audit = options.auditTime ?? 0;
-  const entities$ = (audit >= 0 ? changes$.pipe(auditTime(audit)) : changes$).pipe(
-    startWith(undefined),
-    map(() => read()),
-  );
-
-  return {
-    entities$,
-    getEntities: (entityType: string) => query(entityType),
-  };
 }
 
 /** Re-export for convenience. */
