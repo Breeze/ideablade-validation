@@ -258,18 +258,27 @@ export function installBreezeValidators(
 export interface BreezeEntityStoreOptions {
   /** Only include these entity types (short names). */
   entityTypes?: string[];
-  /** Only include entities in these states. Default: all attached states (not Detached). */
+  /**
+   * Only include entities in these states. Default: Unchanged, Added and Modified. Deleted entities stay in the
+   * manager until saved, but they are on their way out, so they are neither validated nor seen by `store(type)`
+   * (the `unique` validator, expressions). Detached entities are never included.
+   */
   entityStates?: EntityState[];
   /** Coalesce bursts of entity changes (ms). Default 0 (one emission per macrotask). Use -1 to emit synchronously. */
   auditTime?: number;
 }
 
-/** Wraps a Breeze EntityManager as an {@link EntityStore}; emits whenever entities are added, removed or changed. */
+const LIVE_STATES = [EntityState.Unchanged, EntityState.Added, EntityState.Modified];
+
+/**
+ * Wraps a Breeze EntityManager as an {@link EntityStore}; emits whenever entities are added, removed or changed.
+ * Deleted and detached entities are left out by default (see {@link BreezeEntityStoreOptions.entityStates}).
+ */
 export function breezeEntityStore(manager: EntityManager, options: BreezeEntityStoreOptions = {}): EntityStore {
+  const states = (options.entityStates ?? LIVE_STATES).filter((s) => !s.isDetached());
+  const query = (entityTypes?: string | string[]) => manager.getEntities(entityTypes, states) as Entity[];
   const read = (): EntityInfo[] =>
-    (manager.getEntities(options.entityTypes ?? undefined, options.entityStates ?? undefined) as Entity[])
-      .filter((e) => !e.entityAspect.entityState.isDetached())
-      .map((entity) => ({ entityType: entity.entityType.shortName, entity }));
+    query(options.entityTypes).map((entity) => ({ entityType: entity.entityType.shortName, entity }));
 
   const changes$ = new Observable<void>((subscriber) => {
     const token = manager.entityChanged.subscribe(() => subscriber.next());
@@ -283,7 +292,7 @@ export function breezeEntityStore(manager: EntityManager, options: BreezeEntityS
 
   return {
     entities$,
-    getEntities: (entityType: string) => manager.getEntities(entityType) as Entity[],
+    getEntities: (entityType: string) => query(entityType),
   };
 }
 

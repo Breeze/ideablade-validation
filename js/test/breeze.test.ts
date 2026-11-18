@@ -1,4 +1,4 @@
-import { DataProperty, DataType, EntityManager, EntityType, MetadataStore, Validator, type Entity } from 'breeze-client';
+import { DataProperty, DataType, EntityManager, EntityState, EntityType, MetadataStore, Validator, type Entity } from 'breeze-client';
 import { filter, firstValueFrom, skip, toArray } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 
@@ -189,5 +189,24 @@ describe('breezeEntityStore', () => {
     const next = firstValueFrom(results$.pipe(skip(1), filter((r) => r.validationErrors.length === 0)));
     c.email = 'ann@example.com';
     expect((await next).entities).toHaveLength(1);
+  });
+
+  it('leaves out deleted entities, from validation and from store(type)', async () => {
+    const manager = makeManager();
+    const service = createValidationService({ metadata: { Customer: metadata.Customer } });
+    const kept = manager.createEntity('Customer', { id: 1, name: 'Ann', email: null }, EntityState.Unchanged) as Customer;
+    const deleted = manager.createEntity('Customer', { id: 2, name: 'Bob', email: null }, EntityState.Unchanged) as Customer;
+    deleted.entityAspect.setDeleted();
+    expect(deleted.entityAspect.entityState).toBe(EntityState.Deleted); // still in the manager until saved
+
+    const store = breezeEntityStore(manager, { auditTime: -1 });
+    expect(store.getEntities!('Customer')).toEqual([kept]);
+    const result = await firstValueFrom(service.validateEntityStore(store));
+    expect(result.entities.map((ei) => ei.entity)).toEqual([kept]);
+    expect(result.validationErrors).toHaveLength(1);
+
+    // Deleted entities are included only when asked for.
+    const all = breezeEntityStore(manager, { auditTime: -1, entityStates: [EntityState.Unchanged, EntityState.Deleted] });
+    expect(all.getEntities!('Customer')).toHaveLength(2);
   });
 });
