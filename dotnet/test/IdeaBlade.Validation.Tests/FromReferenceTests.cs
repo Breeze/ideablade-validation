@@ -47,6 +47,28 @@ public class FromReferenceTests
     }
 
     [Fact]
+    public void OwnValidatorsGoAfterTheInheritedOnes()
+    {
+        var service = CreateService(Base, null, """
+            { "CustomerEdit": { "properties": { "email": {
+              "from": "Customer",
+              "validators": [
+                { "name": "expression", "context": { "expression": "!value || value.endsWith('.com')", "messageTemplate": "%displayName% must be a .com address" } },
+                { "group": "signup", "validators": ["required"] }
+              ]
+            } } } }
+            """);
+
+        var property = service.ValidationMetadata.GetModelMetadata("CustomerEdit").GetProperty("email")!;
+        Assert.Equal(new[] { "email:", "expression:", "required:signup", "required:" }, property.Validators.Select(v => $"{v.Name}:{v.Group}"));
+        Assert.Equal(new[] { "E-mail is not a valid email address", "E-mail must be a .com address" },
+            service.ValidateModel(Model(("email", "nope")), "CustomerEdit").Select(e => e.ErrorMessage));
+
+        // The extra validators belong to CustomerEdit only; the source property is unchanged.
+        Assert.Equal(new[] { "email", "required" }, service.ValidationMetadata.GetModelMetadata("Customer").GetProperty("email")!.Validators.Select(v => v.Name));
+    }
+
+    [Fact]
     public void FollowsChainsAndReportsCyclesAndUnknownReferences()
     {
         var chained = CreateService(Base, null, """{ "A": { "properties": { "email": { "from": "Customer" } } }, "B": { "properties": { "email": { "from": "A" } } } }""");

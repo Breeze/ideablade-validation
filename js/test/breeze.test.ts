@@ -63,6 +63,29 @@ describe('breezeRuleSource', () => {
     expect(service.validateModelSync({ name: 'Ann' }, 'CustomerName')).toEqual([]);
   });
 
+  it('runs the own validators of the view model property after the inherited Breeze rules', () => {
+    const manager = makeManager();
+    const service = createValidationService({
+      metadata: {
+        CustomerName: {
+          properties: {
+            name: {
+              from: 'Customer',
+              displayName: 'Customer name',
+              validators: [{ name: 'expression', context: { expression: "value !== 'Bob'", messageTemplate: '%displayName% cannot be Bob' } }],
+            },
+          },
+        },
+      },
+      ruleSources: [breezeRuleSource(manager.metadataStore)],
+    });
+    const errorsOf = (name: string) => service.validateModelSync({ name }, 'CustomerName').map((e) => [e.key, e.errorMessage]);
+
+    expect(errorsOf('Much too long')).toEqual([['maxLength_name', "'Customer name' must be a string with 5 characters or less"]]);
+    expect(errorsOf('Bob')).toEqual([['expression_name', 'Customer name cannot be Bob']]);
+    expect(errorsOf('Ann')).toEqual([]);
+  });
+
   it('knows every property of the entity type, with or without validators, and nothing else', () => {
     const source = breezeRuleSource(makeManager().metadataStore);
     expect(source.getPropertyRules('Customer', 'email')).toEqual({ validators: [] });

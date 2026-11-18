@@ -81,6 +81,48 @@ describe('from: inheriting the rules of another property', () => {
     expect(service.validateModelSync({ email: 'a@b.co' }, 'CustomerEdit').map((e) => e.errorMessage)).toEqual(['Mail must be at most 3 characters']);
   });
 
+  it('adds its own validators after the inherited ones, including grouped and async validators', async () => {
+    const service = createValidationService({
+      metadata: [
+        base,
+        {
+          CustomerEdit: {
+            properties: {
+              email: {
+                from: 'Customer',
+                validators: [
+                  { name: 'expression', context: { expression: "!value || value.endsWith('.com')", messageTemplate: '%displayName% must be a .com address' } },
+                  { group: 'signup', validators: [{ name: 'notTaken', async: true }] },
+                ],
+              },
+            },
+          },
+        },
+      ],
+      validators: [asyncValidator('notTaken', async (v) => v !== 'taken@b.org', '%displayName% is taken')],
+    });
+
+    // Inherited first (email, then the required shorthand), then the own validators; all use the inherited displayName.
+    expect(service.validationMetadata.getModelMetadata('CustomerEdit').getProperty('email')!.validators.map((v) => [v.name, v.group ?? null])).toEqual([
+      ['email', null],
+      ['expression', null],
+      ['notTaken', 'signup'],
+      ['required', null],
+    ]);
+    expect(service.validateModelSync({ email: 'nope' }, 'CustomerEdit').map((e) => e.errorMessage)).toEqual([
+      'E-mail is not a valid email address',
+      'E-mail must be a .com address',
+    ]);
+    const all = await firstValueFrom(service.validateModelAsync({ email: 'taken@b.org' }, 'CustomerEdit'));
+    expect(all.map((e) => [e.key, e.errorMessage])).toEqual([
+      ['expression_email', 'E-mail must be a .com address'],
+      ['notTaken_signup_email', 'E-mail is taken'],
+    ]);
+
+    // The extra validators belong to CustomerEdit only; the source property is unchanged.
+    expect(service.validationMetadata.getModelMetadata('Customer').getProperty('email')!.validators.map((v) => v.name)).toEqual(['email', 'required']);
+  });
+
   it('follows chains, and reports cycles and unknown references', () => {
     const chained = createValidationService({
       metadata: [base, { A: { properties: { email: { from: 'Customer' } } }, B: { properties: { email: { from: 'A' } } } }],
