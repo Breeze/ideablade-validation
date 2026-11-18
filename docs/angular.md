@@ -1,8 +1,8 @@
 # Angular
 
-`@ideablade/validation/angular` provides standalone providers, injection tokens, signal helpers and reactive-forms validators. Tested with Angular 22; it works with Angular 17 and later (it needs `makeEnvironmentProviders`, `inject` and `@angular/core/rxjs-interop`).
+`@ideablade/validation/angular` provides standalone providers, injection tokens, signal helpers, reactive-forms validators and template-driven-forms directives. Tested with Angular 22; it works with Angular 17.1 and later (it needs `makeEnvironmentProviders`, `inject`, signal inputs and `@angular/core/rxjs-interop`). It also needs `@angular/forms`.
 
-The library uses no decorators. Everything is functional DI, so it needs no Angular compiler step and is AOT/zoneless friendly.
+The library uses no decorators. Everything is functional DI, so it needs no Angular compiler step and is AOT/zoneless friendly. The two directives ship as partial declarations, the format Angular libraries publish, which the Angular CLI links when it builds your app.
 
 ## Setup
 
@@ -46,7 +46,8 @@ Feature areas can add metadata with `provideValidationMetadata(featureMetadata)`
 | `provideValidatorFactory(() => factory)` | Adds a factory that can `inject()`. |
 | `provideValidatorContext(() => provider)` | Adds a context provider that can `inject()`. |
 | `provideExpressionScope(scope \| () => scope)` | Adds functions or values for expressions. |
-| Tokens | `VALIDATION_METADATA`, `VALIDATOR_FACTORY`, `VALIDATOR_CONTEXT_PROVIDER`, `VALIDATION_EXPRESSION_SCOPE`, `VALIDATION_EXPRESSION_EVALUATOR`, `VALIDATION_SERVICE_OPTIONS`. |
+| `provideModelTypeResolvers(...resolvers)` | Adds model type resolvers (also `modelTypeResolvers` in `provideValidation`). |
+| Tokens | `VALIDATION_METADATA`, `VALIDATOR_FACTORY`, `VALIDATOR_CONTEXT_PROVIDER`, `VALIDATION_EXPRESSION_SCOPE`, `VALIDATION_EXPRESSION_EVALUATOR`, `VALIDATION_SERVICE_OPTIONS`, `VALIDATION_MODEL_TYPE_RESOLVER`. |
 
 ## Using the service
 
@@ -101,3 +102,56 @@ readonly form = inject(FormBuilder).group({
 ```html
 @for (e of form.controls.email.errors | keyvalue; track e.key) { <small>{{ e.value.errorMessage }}</small> }
 ```
+
+## Template-driven forms
+
+Import `ValidationFormsDirectives` next to `FormsModule`. Every `ngModel` is then validated against the metadata rules of its property. Sync rules run as an Angular validator, async rules as an async validator.
+
+```ts
+@Component({
+  imports: [FormsModule, ValidationFormsDirectives],
+  template: `
+    <form [validationModel]="customer" validationModelType="Customer">
+      <input name="email" [(ngModel)]="customer.email" #email="ngModel" />
+      @for (e of email.errors | keyvalue; track e.key) { <small>{{ e.value.errorMessage }}</small> }
+
+      <input name="altEmail" [(ngModel)]="customer.altEmail" validationPropertyName="email" />
+    </form>
+  `,
+})
+export class CustomerFormComponent { ... }
+```
+
+There's no attribute to add to each field. The field directive's selector is `[ngModel]`, so it attaches wherever `ngModel` is used. It does nothing until it knows a model.
+
+| Input | On | Default |
+|---|---|---|
+| `validationModel` | `<form>` or field | The field uses the form's. |
+| `validationModelType` | `<form>` or field | What the model type resolvers return for the model, then the form's. |
+| `validationPropertyName` | field | The control's `name`. |
+| `validationGroup` | `<form>` or field | The form's; without one, only validators without a group run. |
+| `validationContext` | `<form>` or field | The form's. |
+
+### Model type resolvers
+
+When a model doesn't have an explicit `validationModelType`, the directives ask the registered model type resolvers. A resolver is a function `(model) => string | undefined`. It returns a type name for the models it recognizes and `undefined` for everything else. Resolvers run in registration order, and the first name wins. They work for any kind of object, not just Breeze entities:
+
+```ts
+provideValidation({
+  metadata,
+  modelTypeResolvers: [
+    breezeModelType,                                  // Breeze entities: entityType.shortName
+    (model) => (model as { $type?: string })?.$type,  // your own convention
+  ],
+});
+```
+
+Without a resolver that recognizes the model, set `validationModelType` on the field or the form.
+
+A field can bring its own model, for example an `ngModel` outside a form:
+
+```html
+<input [(ngModel)]="note.text" [validationModel]="note" validationModelType="Note" validationPropertyName="text" />
+```
+
+As with reactive forms, the control's value is substituted into a view of the model, and the control's `errors` map error keys to `ValidationError`s. When a form or field input changes, such as `validationGroup`, the control re-validates. Async rules are debounced by 300 ms.

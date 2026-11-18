@@ -17,7 +17,7 @@ Validation should also be independent of how the data is shown. Whenever state c
 - Validators can be **sync or async**. Async validators may return Observables, Promises or Tasks, with a timeout.
 - **Continuous validation** of whole entity stores, such as a Breeze `EntityManager`, that re-validates as entities change.
 - **No `eval`.** Conditions and expressions run in a safe, sandboxed expression interpreter that works under a strict CSP. One grammar is shared by both platforms.
-- First-class **Angular** (standalone providers, signals, reactive forms), **React** (hooks) and **Breeze 3** integrations, all optional peer dependencies.
+- First-class **Angular** (standalone providers, signals, reactive and template-driven forms), **React** (hooks) and **Breeze 3** integrations, all optional peer dependencies.
 
 | Package | Folder | Install |
 |---|---|---|
@@ -55,7 +55,7 @@ service.validateModelSync({ name: '', email: 'nope', country: 'US' }, 'Customer'
 
 ```ts
 providers: [provideValidation({ metadata, validators: [breezeValidator] })]
-// then: inject(ValidationService), validationErrors(signal, 'Customer'), FormValidators
+// then: inject(ValidationService), validationErrors(signal, 'Customer'), FormValidators, ValidationFormsDirectives
 ```
 
 **React:**

@@ -2,7 +2,7 @@ import { DataProperty, DataType, EntityManager, EntityType, MetadataStore, Valid
 import { filter, firstValueFrom, skip, toArray } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 
-import { breezeEntityStore, breezeValidator, installBreezeValidators } from '../src/breeze/index.js';
+import { breezeEntityStore, breezeModelType, breezeValidator, installBreezeValidators } from '../src/breeze/index.js';
 import { asyncValidator, createValidationService } from '../src/index.js';
 
 function makeManager(): EntityManager {
@@ -37,6 +37,17 @@ describe('breezeValidator (Breeze → framework)', () => {
     expect(errors).toHaveLength(1);
     expect(errors[0].propertyName).toBe('name');
     expect(errors[0].errorMessage).toMatch(/5/);
+  });
+});
+
+describe('breezeModelType', () => {
+  it('resolves the entity type of Breeze entities and ignores everything else', () => {
+    const c = makeManager().createEntity('Customer', { id: 1 });
+    expect(breezeModelType(c)).toBe('Customer');
+    expect(breezeModelType({ name: 'x' })).toBeUndefined();
+    expect(breezeModelType(null)).toBeUndefined();
+    const service = createValidationService({ metadata, modelTypeResolvers: [breezeModelType] });
+    expect(service.resolveModelType(c)).toBe('Customer');
   });
 });
 

@@ -39,6 +39,17 @@ const metadata: ModelValidationMetadataMap = {
 
 const validPerson = { id: 1, firstName: 'Ann', email: 'ann@example.com', age: 40, country: 'US', phone: '555-123-4567' };
 
+describe('model type resolvers', () => {
+  it('returns the first name a resolver returns, or undefined', () => {
+    const service = createValidationService({
+      modelTypeResolvers: [() => undefined, (m) => (m as { kind?: string }).kind, () => 'Fallback'],
+    });
+    expect(service.resolveModelType({ kind: 'Order' })).toBe('Order');
+    expect(service.resolveModelType({})).toBe('Fallback');
+    expect(createValidationService().resolveModelType({ kind: 'Order' })).toBeUndefined();
+  });
+});
+
 describe('ValidationService (sync)', () => {
   const service = createValidationService({ metadata });
 

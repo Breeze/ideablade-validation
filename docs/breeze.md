@@ -87,3 +87,10 @@ Model conditions, `findEntity(id, type)` and the `unique` validator all work aga
 ## Model type names
 
 The model type is `entity.entityType.shortName`. Use the same names as keys in your metadata, and on the server, where the .NET library uses the CLR type name by default.
+
+`breezeModelType` is a model type resolver. It returns that name for Breeze entities and `undefined` for anything else. Register it so that code which finds the type from the model itself recognizes entities. The Angular template-driven-forms directives are an example.
+
+```ts
+createValidationService({ metadata, validators: [breezeValidator], modelTypeResolvers: [breezeModelType] });
+// Angular: provideValidation({ metadata, validators: [breezeValidator], modelTypeResolvers: [breezeModelType] })
+```

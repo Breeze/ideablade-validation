@@ -1,5 +1,6 @@
 /**
- * Angular integration: standalone providers, injection tokens, signal helpers and reactive-forms validators.
+ * Angular integration: standalone providers, injection tokens, signal helpers, reactive-forms validators and
+ * template-driven-forms directives.
  *
  * @example
  * // app.config.ts
@@ -13,24 +14,38 @@
  * // component
  * readonly validation = inject(ValidationService);
  */
+import * as i0 from '@angular/core';
 import {
   type EnvironmentProviders,
   InjectionToken,
+  type OnChanges,
   type Provider,
   type Signal,
+  type SimpleChanges,
   computed,
   inject,
+  input,
   makeEnvironmentProviders,
 } from '@angular/core';
-import { toObservable, toSignal } from '@angular/core/rxjs-interop';
-import type { AbstractControl, AsyncValidatorFn, ValidationErrors, ValidatorFn } from '@angular/forms';
-import { type Observable, map, of, switchMap, timer } from 'rxjs';
+import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
+import {
+  type AbstractControl,
+  type AsyncValidator,
+  type AsyncValidatorFn,
+  NG_ASYNC_VALIDATORS,
+  NG_VALIDATORS,
+  type ValidationErrors,
+  type Validator,
+  type ValidatorFn,
+} from '@angular/forms';
+import { type Observable, Subject, map, of, switchMap, timer } from 'rxjs';
 
 import type { EntityInfo, GlobalValidationContext, ValidatorContextProvider } from '../core/context.js';
 import type { ModelValidationMetadataLike } from '../core/metadata-config.js';
 import { ValidationMetadata } from '../core/metadata.js';
 import type { ValidationError } from '../core/validation-error.js';
 import {
+  type ModelTypeResolver,
   type ModelValidationState,
   type ValidationOptions,
   ValidationService,
@@ -49,6 +64,8 @@ export const VALIDATION_METADATA = new InjectionToken<ModelValidationMetadataLik
 export const VALIDATOR_FACTORY = new InjectionToken<ValidatorFactory[]>('IdeaBlade.ValidatorFactory');
 /** Context providers (multi). */
 export const VALIDATOR_CONTEXT_PROVIDER = new InjectionToken<ValidatorContextProvider[]>('IdeaBlade.ValidatorContextProvider');
+/** Model type resolvers (multi; the first that returns a name wins). */
+export const VALIDATION_MODEL_TYPE_RESOLVER = new InjectionToken<ModelTypeResolver[]>('IdeaBlade.ValidationModelTypeResolver');
 /** Trusted functions/values visible to expressions (multi; objects are merged). */
 export const VALIDATION_EXPRESSION_SCOPE = new InjectionToken<Record<string, unknown>[]>('IdeaBlade.ValidationExpressionScope');
 /** Replaces the default safe expression evaluator. */
@@ -67,6 +84,8 @@ export interface ValidationConfig extends Pick<ValidationServiceOptions, 'asyncT
   includeDefaultValidators?: boolean;
   /** Trusted functions/values visible to expressions. */
   expressionScope?: Record<string, unknown>;
+  /** Resolve the model type of models where none is given, such as `breezeModelType`. */
+  modelTypeResolvers?: ModelTypeResolver[];
   /** Replaces the default {@link SafeExpressionEvaluator}. */
   expressionEvaluator?: ExpressionEvaluator;
 }
@@ -93,6 +112,7 @@ export function provideValidation(config: ValidationConfig = {}): EnvironmentPro
         new ValidationService(inject(ValidationMetadata), {
           ...(inject(VALIDATION_SERVICE_OPTIONS, { optional: true }) ?? {}),
           contextProviders: flat(inject(VALIDATOR_CONTEXT_PROVIDER, { optional: true })),
+          modelTypeResolvers: flat(inject(VALIDATION_MODEL_TYPE_RESOLVER, { optional: true })),
           expressionScope: Object.assign({}, ...flat(inject(VALIDATION_EXPRESSION_SCOPE, { optional: true }))),
         }),
     },
@@ -107,6 +127,9 @@ export function provideValidation(config: ValidationConfig = {}): EnvironmentPro
   }
   if (config.metadata) {
     providers.push({ provide: VALIDATION_METADATA, useValue: config.metadata, multi: true });
+  }
+  if (config.modelTypeResolvers?.length) {
+    providers.push(...provideModelTypeResolvers(...config.modelTypeResolvers));
   }
   if (config.expressionScope) {
     providers.push({ provide: VALIDATION_EXPRESSION_SCOPE, useValue: config.expressionScope, multi: true });
@@ -141,6 +164,11 @@ export function provideValidatorFactory(factory: () => ValidatorFactory): Provid
  */
 export function provideValidatorContext(factory: () => ValidatorContextProvider): Provider {
   return { provide: VALIDATOR_CONTEXT_PROVIDER, useFactory: factory, multi: true };
+}
+
+/** Registers model type resolvers, such as `breezeModelType`. */
+export function provideModelTypeResolvers(...resolvers: ModelTypeResolver[]): Provider[] {
+  return resolvers.map((r) => ({ provide: VALIDATION_MODEL_TYPE_RESOLVER, useValue: r, multi: true }));
 }
 
 /** Makes trusted functions/values available to expressions. */
@@ -258,3 +286,218 @@ export class FormValidators {
   }
 }
 
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Template-driven forms
+//
+// The library is compiled with plain tsc (no Angular compiler), so the directives below carry hand-written partial
+// declarations (`ɵfac`/`ɵdir`), the same format ng-packagr publishes. The Angular CLI links them at build time; in JIT
+// the compiler does it at runtime. The typed static fields are what the Angular compiler reads from the .d.ts. The linker parses
+// the declarations statically, so they must stay literals (no helper calls for inputs). The casts
+// only satisfy the facade typings, which omit `minVersion`; the emitted JS is the plain literal call the linker expects.
+
+/**
+ * Sets the model, model type, group and context for every `ngModel` in a template-driven form, so the fields
+ * don't have to repeat them:
+ *
+ * ```html
+ * <form [validationModel]="customer" validationModelType="Customer">
+ *   <input name="email" [(ngModel)]="customer.email" #email="ngModel" />
+ * </form>
+ * ```
+ */
+export class ValidationFormDirective implements OnChanges {
+  /** The model the form edits. */
+  readonly validationModel = input<unknown>();
+  /** The model type. Optional when a model type resolver (such as `breezeModelType`) recognizes the model. */
+  readonly validationModelType = input<string>();
+  /** Validator group; only validators of that group run (default: validators without a group). */
+  readonly validationGroup = input<string>();
+  /** Extra context passed to the validators. */
+  readonly validationContext = input<GlobalValidationContext>();
+
+  /** @internal Emits when an input changes, so the fields re-validate. */
+  readonly changes = new Subject<void>();
+
+  ngOnChanges(): void {
+    this.changes.next();
+  }
+
+  static ɵfac: i0.ɵɵFactoryDeclaration<ValidationFormDirective, never> = i0.ɵɵngDeclareFactory({
+    minVersion: '12.0.0',
+    version: '17.1.0',
+    ngImport: i0,
+    type: ValidationFormDirective,
+    deps: [],
+    target: i0.ɵɵFactoryTarget.Directive,
+  } as never) as never;
+
+  static ɵdir: i0.ɵɵDirectiveDeclaration<
+    ValidationFormDirective,
+    'form:not([ngNoForm]),ng-form,[ngForm]',
+    never,
+    {
+      validationModel: { alias: 'validationModel'; required: false; isSignal: true };
+      validationModelType: { alias: 'validationModelType'; required: false; isSignal: true };
+      validationGroup: { alias: 'validationGroup'; required: false; isSignal: true };
+      validationContext: { alias: 'validationContext'; required: false; isSignal: true };
+    },
+    {},
+    never,
+    never,
+    true,
+    never
+  > = i0.ɵɵngDeclareDirective({
+    minVersion: '17.1.0',
+    version: '17.1.0',
+    type: ValidationFormDirective,
+    isStandalone: true,
+    selector: 'form:not([ngNoForm]),ng-form,[ngForm]',
+    inputs: {
+      validationModel: { classPropertyName: 'validationModel', publicName: 'validationModel', isSignal: true, isRequired: false, transformFunction: null },
+      validationModelType: { classPropertyName: 'validationModelType', publicName: 'validationModelType', isSignal: true, isRequired: false, transformFunction: null },
+      validationGroup: { classPropertyName: 'validationGroup', publicName: 'validationGroup', isSignal: true, isRequired: false, transformFunction: null },
+      validationContext: { classPropertyName: 'validationContext', publicName: 'validationContext', isSignal: true, isRequired: false, transformFunction: null },
+    },
+    usesOnChanges: true,
+    ngImport: i0,
+  } as never) as never;
+}
+
+/**
+ * Validates an `ngModel` with the metadata rules of its model's property: sync rules as an Angular validator, async
+ * rules as an async validator. It applies to every `[ngModel]` once imported, and does nothing until a model is known.
+ *
+ * - The model, model type, group and context come from the field's inputs or from the enclosing
+ *   {@link ValidationFormDirective}.
+ * - The property defaults to the control's `name`; set `validationPropertyName` when they differ.
+ *
+ * The control's `errors` map error keys to {@link ValidationError}s:
+ *
+ * ```html
+ * <input name="email" [(ngModel)]="customer.email" #email="ngModel" />
+ * @for (e of email.errors | keyvalue; track e.key) { <small>{{ e.value.errorMessage }}</small> }
+ * ```
+ */
+export class ValidationFieldDirective implements Validator, OnChanges {
+  /** The model; defaults to the form's. */
+  readonly validationModel = input<unknown>();
+  /** The model type; defaults to what the model type resolvers return, then to the form's. */
+  readonly validationModelType = input<string>();
+  /** The property; defaults to the control's `name`. */
+  readonly validationPropertyName = input<string>();
+  /** Validator group; defaults to the form's. */
+  readonly validationGroup = input<string>();
+  /** Extra context passed to the validators; defaults to the form's. */
+  readonly validationContext = input<GlobalValidationContext>();
+  /** The control's name (also an `NgModel` input). */
+  readonly name = input<string>();
+
+  private readonly formValidators = inject(FormValidators);
+  private readonly validationService = inject(ValidationService);
+  private readonly form = inject(ValidationFormDirective, { optional: true });
+  private onValidatorChange?: () => void;
+
+  /** The async half, registered as `NG_ASYNC_VALIDATORS`. */
+  readonly asyncValidator: AsyncValidator = {
+    validate: (control) => {
+      const target = this.target();
+      return target
+        ? this.formValidators.createAsyncValidatorFn(() => target.info, target.propertyName, target.group, target.context)(control)
+        : of(null);
+    },
+  };
+
+  constructor() {
+    this.form?.changes.pipe(takeUntilDestroyed()).subscribe(() => this.onValidatorChange?.());
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (Object.values(changes).some((c) => !c.firstChange)) {
+      this.onValidatorChange?.();
+    }
+  }
+
+  validate(control: AbstractControl): ValidationErrors | null {
+    const target = this.target();
+    return target
+      ? this.formValidators.createSyncValidatorFn(() => target.info, target.propertyName, target.group, target.context)(control)
+      : null;
+  }
+
+  registerOnValidatorChange(fn: () => void): void {
+    this.onValidatorChange = fn;
+  }
+
+  private target(): { info: EntityInfo; propertyName: string; group?: string; context?: GlobalValidationContext } | null {
+    const model = this.validationModel() ?? this.form?.validationModel();
+    const propertyName = this.validationPropertyName() ?? this.name();
+    if (model == null || !propertyName) {
+      return null;
+    }
+    const entityType = this.validationModelType() ?? this.validationService.resolveModelType(model) ?? this.form?.validationModelType();
+    if (!entityType) {
+      throw new Error(`Cannot validate '${propertyName}': set validationModelType on the field or the form, or register a model type resolver that recognizes the model.`);
+    }
+    return {
+      info: { entity: model, entityType },
+      propertyName,
+      group: this.validationGroup() ?? this.form?.validationGroup(),
+      context: this.validationContext() ?? this.form?.validationContext(),
+    };
+  }
+
+  static ɵfac: i0.ɵɵFactoryDeclaration<ValidationFieldDirective, never> = i0.ɵɵngDeclareFactory({
+    minVersion: '12.0.0',
+    version: '17.1.0',
+    ngImport: i0,
+    type: ValidationFieldDirective,
+    deps: [],
+    target: i0.ɵɵFactoryTarget.Directive,
+  } as never) as never;
+
+  static ɵdir: i0.ɵɵDirectiveDeclaration<
+    ValidationFieldDirective,
+    '[ngModel]:not([formControlName]):not([formControl])',
+    never,
+    {
+      validationModel: { alias: 'validationModel'; required: false; isSignal: true };
+      validationModelType: { alias: 'validationModelType'; required: false; isSignal: true };
+      validationPropertyName: { alias: 'validationPropertyName'; required: false; isSignal: true };
+      validationGroup: { alias: 'validationGroup'; required: false; isSignal: true };
+      validationContext: { alias: 'validationContext'; required: false; isSignal: true };
+      name: { alias: 'name'; required: false; isSignal: true };
+    },
+    {},
+    never,
+    never,
+    true,
+    never
+  > = i0.ɵɵngDeclareDirective({
+    minVersion: '17.1.0',
+    version: '17.1.0',
+    type: ValidationFieldDirective,
+    isStandalone: true,
+    selector: '[ngModel]:not([formControlName]):not([formControl])',
+    inputs: {
+      validationModel: { classPropertyName: 'validationModel', publicName: 'validationModel', isSignal: true, isRequired: false, transformFunction: null },
+      validationModelType: { classPropertyName: 'validationModelType', publicName: 'validationModelType', isSignal: true, isRequired: false, transformFunction: null },
+      validationPropertyName: { classPropertyName: 'validationPropertyName', publicName: 'validationPropertyName', isSignal: true, isRequired: false, transformFunction: null },
+      validationGroup: { classPropertyName: 'validationGroup', publicName: 'validationGroup', isSignal: true, isRequired: false, transformFunction: null },
+      validationContext: { classPropertyName: 'validationContext', publicName: 'validationContext', isSignal: true, isRequired: false, transformFunction: null },
+      name: { classPropertyName: 'name', publicName: 'name', isSignal: true, isRequired: false, transformFunction: null },
+    },
+    providers: [
+      { provide: NG_VALIDATORS, useExisting: ValidationFieldDirective, multi: true },
+      { provide: NG_ASYNC_VALIDATORS, useFactory: () => inject(ValidationFieldDirective).asyncValidator, multi: true },
+    ],
+    usesOnChanges: true,
+    ngImport: i0,
+  } as never) as never;
+}
+
+/**
+ * The template-driven-forms directives. Import them next to `FormsModule`:
+ * `imports: [FormsModule, ValidationFormsDirectives]`.
+ */
+export const ValidationFormsDirectives = [ValidationFormDirective, ValidationFieldDirective] as const;

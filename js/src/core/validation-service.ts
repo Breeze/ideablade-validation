@@ -67,9 +67,20 @@ export interface ValidationOptions {
   expressionScope?: Record<string, unknown>;
 }
 
+/**
+ * Returns the model type of a model, or undefined when it doesn't recognize the model.
+ * @example const breezeModelType: ModelTypeResolver = (m) => isBreezeEntity(m) ? m.entityType.shortName : undefined;
+ */
+export type ModelTypeResolver = (model: unknown) => string | undefined;
+
 export interface ValidationServiceOptions {
   /** Providers that add context values per model (Angular: VALIDATOR_CONTEXT_PROVIDER). */
   contextProviders?: readonly ValidatorContextProvider[];
+  /**
+   * Resolve the model type of a model where none is given, such as in the Angular template-driven-forms
+   * directives. The first resolver that returns a name wins (Angular: VALIDATION_MODEL_TYPE_RESOLVER).
+   */
+  modelTypeResolvers?: readonly ModelTypeResolver[];
   /** Trusted functions/values visible to all expressions (e.g. `{ today: () => new Date() }`). */
   expressionScope?: Record<string, unknown>;
   /**
@@ -94,6 +105,7 @@ export class ValidationService {
   private readonly modelValidated = new Subject<{ modelInfo: EntityInfo; validationErrors: ValidationError[] }>();
   private readonly revalidateRequested = new Subject<unknown>();
   private readonly contextProviders: readonly ValidatorContextProvider[];
+  private readonly modelTypeResolvers: readonly ModelTypeResolver[];
   private readonly expressionScope: Record<string, unknown>;
   private readonly asyncTimeout: number;
   private readonly onAsyncTimeout?: ValidationServiceOptions['onAsyncTimeout'];
@@ -103,9 +115,21 @@ export class ValidationService {
     options: ValidationServiceOptions = {},
   ) {
     this.contextProviders = options.contextProviders ?? [];
+    this.modelTypeResolvers = options.modelTypeResolvers ?? [];
     this.expressionScope = options.expressionScope ?? {};
     this.asyncTimeout = options.asyncTimeout ?? 60_000;
     this.onAsyncTimeout = options.onAsyncTimeout;
+  }
+
+  /** The model type of `model` from the {@link ValidationServiceOptions.modelTypeResolvers}, or undefined. */
+  resolveModelType(model: unknown): string | undefined {
+    for (const resolve of this.modelTypeResolvers) {
+      const modelType = resolve(model);
+      if (modelType) {
+        return modelType;
+      }
+    }
+    return undefined;
   }
 
   /** Emits after each model validation (sync or async). */

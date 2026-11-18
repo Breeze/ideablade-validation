@@ -55,8 +55,8 @@
     "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "peerDependencies": {
-    "@angular/core": ">=17.0.0",
-    "@angular/forms": ">=17.0.0",
+    "@angular/core": ">=17.1.0",
+    "@angular/forms": ">=17.1.0",
     "breeze-client": ">=3.0.0",
     "react": ">=18.0.0",
     "rxjs": "^7.4.0"

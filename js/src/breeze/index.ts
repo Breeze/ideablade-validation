@@ -26,7 +26,7 @@ import { Observable, auditTime, defer, firstValueFrom, map, startWith } from 'rx
 import type { EntityInfo, ValidationContext, ValidationContextBase, ValidatorFunctionContext } from '../core/context.js';
 import type { ValidatorMetadata } from '../core/metadata.js';
 import { ValidationError, getPath } from '../core/validation-error.js';
-import type { EntityStore, ValidationOptions, ValidationService } from '../core/validation-service.js';
+import type { EntityStore, ModelTypeResolver, ValidationOptions, ValidationService } from '../core/validation-service.js';
 import { type Validator, ValidatorBase, type ValidatorFactory } from '../core/validator.js';
 
 /** True for Breeze entities (objects with an entityAspect). */
@@ -34,10 +34,11 @@ export function isBreezeEntity(value: unknown): value is Entity {
   return typeof value === 'object' && value !== null && 'entityAspect' in value && 'entityType' in value;
 }
 
-/** Model type of a Breeze entity: its entity type's short name. */
-export function breezeModelType(entity: Entity): string {
-  return entity.entityType.shortName;
-}
+/**
+ * Model type resolver for Breeze entities: the entity type's short name; undefined for anything else.
+ * Register it with `modelTypeResolvers: [breezeModelType]` (Angular: `provideValidation({ modelTypeResolvers: [breezeModelType] })`).
+ */
+export const breezeModelType: ModelTypeResolver = (model) => (isBreezeEntity(model) ? model.entityType.shortName : undefined);
 
 /**
  * Validator `breeze`: runs Breeze's validation for the model (an entity) and maps the resulting errors.
@@ -268,7 +269,7 @@ export function breezeEntityStore(manager: EntityManager, options: BreezeEntityS
   const read = (): EntityInfo[] =>
     (manager.getEntities(options.entityTypes ?? undefined, options.entityStates ?? undefined) as Entity[])
       .filter((e) => !e.entityAspect.entityState.isDetached())
-      .map((entity) => ({ entityType: breezeModelType(entity), entity }));
+      .map((entity) => ({ entityType: entity.entityType.shortName, entity }));
 
   const changes$ = new Observable<void>((subscriber) => {
     const token = manager.entityChanged.subscribe(() => subscriber.next());

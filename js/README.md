@@ -9,9 +9,9 @@ npm i @ideablade/validation rxjs
 | Import | Contents | Peer dependencies |
 |---|---|---|
 | `@ideablade/validation` | Core: `createValidationService`, `ValidationService`, `ValidationMetadata`, validators, `SafeExpressionEvaluator` | `rxjs ^7.4` |
-| `@ideablade/validation/angular` | `provideValidation`, tokens, `validationErrors`/`validationState` signals, `FormValidators` | `@angular/core ≥17`, `@angular/forms` (only for `FormValidators`) |
+| `@ideablade/validation/angular` | `provideValidation`, tokens, `validationErrors`/`validationState` signals, `FormValidators` (reactive forms), `ValidationFormsDirectives` (template-driven forms) | `@angular/core ≥17.1`, `@angular/forms` |
 | `@ideablade/validation/react` | `ValidationProvider`, `useValidation`, `useEntityStoreValidation` | `react ≥18` |
-| `@ideablade/validation/breeze` | `breezeValidator`, `installBreezeValidators`, `breezeEntityStore` | `breeze-client ≥3` |
+| `@ideablade/validation/breeze` | `breezeValidator`, `installBreezeValidators`, `breezeEntityStore`, `breezeModelType` | `breeze-client ≥3` |
 
 The package is ESM-only and requires Node.js ≥ 22 for server-side use. The metadata JSON schema ships at `@ideablade/validation/schema/validation-metadata.schema.json`.
 
