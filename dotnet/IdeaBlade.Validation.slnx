@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/IdeaBlade.Validation/IdeaBlade.Validation.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/IdeaBlade.Validation.Tests/IdeaBlade.Validation.Tests.csproj" />
+  </Folder>
+</Solution>

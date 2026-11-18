@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ideablade.com/schemas/validation-metadata.schema.json",
+  "title": "IdeaBlade validation metadata",
+  "description": "Validation rules keyed by model type, plus an optional 'global' section. Used by both @ideablade/validation (TypeScript) and IdeaBlade.Validation (.NET). See docs/metadata.md.",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string" },
+    "global": { "$ref": "#/$defs/global" }
+  },
+  "additionalProperties": { "$ref": "#/$defs/model" },
+  "$defs": {
+    "global": {
+      "type": "object",
+      "description": "Validators applied to every model type.",
+      "properties": {
+        "validators": { "$ref": "#/$defs/validatorList" }
+      },
+      "additionalProperties": false
+    },
+    "model": {
+      "type": "object",
+      "properties": {
+        "extends": {
+          "type": "string",
+          "description": "Model type whose validators and properties are inherited."
+        },
+        "condition": {
+          "$ref": "#/$defs/expression",
+          "description": "When validating an entity store, models for which this is falsy are skipped. Variables: model, entityInfos, findEntity(id, type), store(type), isClient, isServer."
+        },
+        "validators": {
+          "$ref": "#/$defs/validatorList",
+          "description": "Model-level validators; they receive the whole model as value."
+        },
+        "properties": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/property" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "property": {
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string" },
+        "required": { "type": "boolean", "description": "Shorthand for the 'required' validator." },
+        "minLength": { "type": "integer", "minimum": 0, "description": "Shorthand for the 'minLength' validator." },
+        "maxLength": { "type": "integer", "minimum": 0, "description": "Shorthand for the 'maxLength' validator." },
+        "validators": { "$ref": "#/$defs/validatorList" }
+      },
+      "additionalProperties": false
+    },
+    "validatorList": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/validatorName" },
+          { "$ref": "#/$defs/validator" },
+          { "$ref": "#/$defs/group" }
+        ]
+      }
+    },
+    "group": {
+      "type": "object",
+      "description": "A named group of validators. Select groups at validation time with a predicate.",
+      "properties": {
+        "group": { "type": "string" },
+        "validators": {
+          "type": "array",
+          "items": { "oneOf": [{ "$ref": "#/$defs/validatorName" }, { "$ref": "#/$defs/validator" }] }
+        }
+      },
+      "required": ["group", "validators"],
+      "additionalProperties": false
+    },
+    "validatorName": {
+      "type": "string",
+      "description": "Name of a registered validator, e.g. 'required', 'email' or a custom validator.",
+      "examples": [
+        "required", "minLength", "maxLength", "pattern", "email", "zipCode", "phone", "social", "fein",
+        "currency", "numeric", "integer", "range", "numericRange", "dateRange", "date", "compare", "invalidValues",
+        "validValues", "expression", "unique", "breeze"
+      ]
+    },
+    "validator": {
+      "type": "object",
+      "properties": {
+        "name": { "$ref": "#/$defs/validatorName" },
+        "id": { "type": "string", "description": "Stable identifier reported as ValidationError.id." },
+        "async": { "type": "boolean", "description": "Select the asynchronous validator registered under 'name'." },
+        "condition": {
+          "$ref": "#/$defs/expression",
+          "description": "The validator only runs when this is truthy. Variables: model, value, context, isClient, isServer, plus registered functions."
+        },
+        "context": {
+          "type": "object",
+          "description": "Validator settings and message template.",
+          "properties": {
+            "messageTemplate": { "type": "string", "description": "Message with %placeholders%, e.g. '%displayName% is required'." },
+            "displayName": { "type": "string" },
+            "expression": { "type": "string" },
+            "minValue": { "type": ["number", "string"] },
+            "maxValue": { "type": ["number", "string"] },
+            "minLength": { "type": "integer" },
+            "maxLength": { "type": "integer" },
+            "values": { "type": "array" },
+            "other": { "type": "string" },
+            "op": { "enum": ["==", "===", "!=", "!==", "<", "<=", ">", ">="] }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": ["name"],
+      "additionalProperties": false
+    },
+    "expression": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Expression in the safe expression language (a side-effect-free JavaScript subset). See docs/expressions.md."
+    }
+  }
+}

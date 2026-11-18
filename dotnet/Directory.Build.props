@@ -1,0 +1,13 @@
+<Project>
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Deterministic>true</Deterministic>
+    <Authors>IdeaBlade</Authors>
+    <Company>IdeaBlade</Company>
+    <Copyright>Copyright © IdeaBlade</Copyright>
+    <RepositoryUrl>https://github.com/Breeze/ideablade-validation</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+</Project>

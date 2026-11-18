@@ -1,0 +1,21 @@
+{
+  // Comments and trailing commas are allowed
+  "global": { "validators": [{ "name": "expression", "id": "HAS_ID", "context": { "expression": "model.id != null", "messageTemplate": "Missing id" } }] },
+  "Person": {
+    "properties": {
+      "firstName": { "displayName": "First name", "required": true, "maxLength": 10 },
+      "email": { "displayName": "E-mail", "validators": ["email"] },
+      "age": { "validators": [{ "name": "range", "context": { "minValue": 0, "maxValue": 130 } }] },
+      "phone": { "validators": [{ "name": "phone", "condition": "model.country === 'US'" }] },
+    }
+  },
+  "Employee": {
+    "extends": "Person",
+    "validators": [
+      { "name": "expression", "context": { "expression": "model.endDate == null || model.endDate > model.startDate", "messageTemplate": "End must follow start" } }
+    ],
+    "properties": {
+      "employeeNo": { "displayName": "Employee #", "validators": [{ "group": "hire", "validators": ["required"] }] }
+    }
+  }
+}

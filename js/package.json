@@ -1,0 +1,100 @@
+{
+  "name": "@ideablade/validation",
+  "version": "0.1.0",
+  "description": "Data-store agnostic, metadata-driven validation framework with Angular providers, React hooks and a Breeze adapter.",
+  "keywords": [
+    "validation",
+    "metadata",
+    "rxjs",
+    "angular",
+    "react",
+    "breeze"
+  ],
+  "license": "MIT",
+  "author": "IdeaBlade",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Breeze/ideablade-validation.git",
+    "directory": "js"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "schema",
+    "README.md",
+    "LICENSE"
+  ],
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./angular": {
+      "types": "./dist/angular/index.d.ts",
+      "default": "./dist/angular/index.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "default": "./dist/react/index.js"
+    },
+    "./breeze": {
+      "types": "./dist/breeze/index.d.ts",
+      "default": "./dist/breeze/index.js"
+    },
+    "./package.json": "./package.json",
+    "./schema/validation-metadata.schema.json": "./schema/validation-metadata.schema.json"
+  },
+  "scripts": {
+    "build": "node scripts/copy-assets.mjs && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+  },
+  "peerDependencies": {
+    "@angular/core": ">=17.0.0",
+    "@angular/forms": ">=17.0.0",
+    "breeze-client": ">=3.0.0",
+    "react": ">=18.0.0",
+    "rxjs": "^7.4.0"
+  },
+  "peerDependenciesMeta": {
+    "@angular/core": {
+      "optional": true
+    },
+    "@angular/forms": {
+      "optional": true
+    },
+    "breeze-client": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@angular/common": "^22.2.6",
+    "@angular/compiler": "^22.2.6",
+    "@angular/core": "^22.2.6",
+    "@angular/forms": "^22.2.6",
+    "@angular/platform-browser": "^22.2.6",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "breeze-client": "^3.0.0",
+    "jsdom": "^31.0.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "rxjs": "^7.8.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0",
+    "zone.js": "^0.16.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

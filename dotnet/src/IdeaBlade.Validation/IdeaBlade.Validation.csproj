@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.0;net8.0;net10.0</TargetFrameworks>
+    <RootNamespace>IdeaBlade.Validation</RootNamespace>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Public members are documented where it matters; don't fail the build for every trivial member. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+
+    <PackageId>IdeaBlade.Validation</PackageId>
+    <Version>0.1.0</Version>
+    <Description>Data-store agnostic, metadata-driven validation framework. Server-side (.NET) counterpart of the @ideablade/validation npm package: the same JSON metadata, validators and safe expression language on client and server.</Description>
+    <PackageTags>validation;metadata;rules;breeze;expressions</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.15" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <PackageReference Include="System.Text.Json" Version="10.0.15" />
+    <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="10.0.15" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="IdeaBlade.Validation.Tests" />
+  </ItemGroup>
+
+</Project>
