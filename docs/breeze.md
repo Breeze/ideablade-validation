@@ -26,6 +26,27 @@ The validator calls `entity.entityAspect.validateEntity()` and maps each Breeze 
 
 Non-entities are ignored.
 
+### On form fields
+
+Breeze's rules belong to properties, but `breeze` is a model-level validator. When a single property is validated, as the form integrations do for each control (`ValidationOptions.propertyName`), `breeze` checks that property alone: it runs the property's Breeze validators on the value being validated, which in a form is the control's value. It doesn't change the entity's Breeze errors. So a field bound to `customer.name` shows Breeze's `maxLength` next to the metadata's own rules for `name`, all as `ValidationError`s:
+
+```html
+<form [validationModel]="customer">
+  <input name="name" [(ngModel)]="customer.name" #name="ngModel" />
+  @for (e of name.errors | keyvalue; track e.key) { <small>{{ e.value.errorMessage }}</small> }
+</form>
+```
+
+Rules that `installBreezeValidators` added to Breeze (section 2) are left out here, because the framework already runs them itself.
+
+### On the server
+
+There's no Breeze on a .NET server, but Breeze's rules come from the server model's data annotations. Register the .NET `DataAnnotationsValidator` under the same name, and the same `{ "global": { "validators": ["breeze"] } }` runs those annotations there ([dotnet.md](dotnet.md#data-annotations)):
+
+```csharp
+services.AddIdeaBladeValidation(v => v.AddMetadataFile("validation.metadata.json").AddDataAnnotations("breeze"));
+```
+
 ### Breeze async validators
 
 Breeze 3 validators can be async: a validator whose function returns a Promise (an `async` function, or one created with `isAsync: true`). Breeze runs them only where it can wait for the answer, on save and from `entityAspect.validateEntityAsync()`, not on property change.

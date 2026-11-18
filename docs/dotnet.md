@@ -31,6 +31,7 @@ builder.Services.AddIdeaBladeValidation(v => v
 | `AddValidators(params ValidatorFactory[])` | Register validators |
 | `ExcludeDefaultValidators()` | Don't register `DefaultValidators.All` |
 | `AddContextProvider<T>()` | `IValidatorContextProvider`: adds context values per model |
+| `AddDataAnnotations(name = "dataAnnotations")` | Registers `DataAnnotationsValidator` under `name` ([below](#data-annotations)) |
 | `AddRuleSource(source)` / `AddRuleSource<T>()` | `IValidationRuleSource`: rules outside the metadata, inherited through `from` ([concepts.md](concepts.md#rule-sources)) |
 | `AddExpressionFunction(name, delegate)` | A trusted function callable from expressions |
 | `Configure(Action<ValidationServiceOptions>)` | `AsyncTimeout`, `OnAsyncTimeout`, `ModelTypeResolver`, `ExpressionScope` |
@@ -85,6 +86,18 @@ var errors = await validation.ValidateEntitiesAsync(new ValidationEntityStore(li
 
 Implement `IValidationEntityStore` (`Entities`), plus `IValidationEntityTypeLookup` (`GetEntities(type)`) for a fast `store(type)`, to validate other sources such as an EF change tracker.
 
+## Data annotations
+
+`DataAnnotationsValidator` runs a model's data annotations (`[Required]`, `[StringLength]`, any `ValidationAttribute`, and `IValidatableObject`) as a model-level validator. Each failure is a `ValidationError` like any other: its key is named after the attribute (`required_City`, `stringLength_Zipcode`), its property is the CLR property, and its message is the annotation's own.
+
+Reference it from the metadata, usually as a global validator. To pair it with the client's `breeze` validator, register it as `breeze`: Breeze builds its client-side rules from these same annotations, so one metadata entry runs them on both sides.
+
+```csharp
+services.AddIdeaBladeValidation(v => v
+    .AddMetadataFile("validation.metadata.json")   // { "global": { "validators": ["breeze"] }, ... }
+    .AddDataAnnotations("breeze"));
+```
+
 ## Writing validators
 
 ```csharp
@@ -99,6 +112,8 @@ public sealed class MultipleOfValidator : Validator
 
 services.AddIdeaBladeValidation(v => v.AddValidators(new ValidatorFactory("multipleOf", (g, c) => new MultipleOfValidator(g, c))));
 ```
+
+A sync validator that reports several errors at once overrides `ValidateAll(value, context)`; the service calls it, and by default it returns the single error of `Validate`.
 
 Async validators derive from `AsyncValidator` and override `ValidateCoreAsync(value, context, cancellationToken)`. If a validator throws, the exception counts as a failure and is stored in `context["exception"]`.
 

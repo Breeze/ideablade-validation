@@ -85,6 +85,11 @@ export type Coalesce = number | false;
 export interface ValidationOptions {
   /** Controls which validators run. */
   predicate?: ValidatorPredicate;
+  /**
+   * Validates one property: its own rules, plus the model-level validators that can check a single property
+   * (`validateProperty`, such as `breeze`). The form integrations validate a control this way.
+   */
+  propertyName?: string;
   /** Values merged into every validator's context. */
   context?: GlobalValidationContext;
   /** Emitting on this observable re-runs entity store validation. */
@@ -412,19 +417,38 @@ export class ValidationService {
     };
 
     const steps: Step[] = [];
-    const add = (validatorMetadata: ValidatorMetadata, value: unknown, context: ValidationContext) => {
+    const add = (validatorMetadata: ValidatorMetadata, value: unknown, context: ValidationContext, validator?: Validator) => {
       if ((!syncOnly || !validatorMetadata.async) && validatorMetadata.evalCondition(context, resolver)) {
-        steps.push({ validator: validatorMetadata.getValidator(), value, context });
+        steps.push({ validator: validator ?? validatorMetadata.getValidator(), value, context });
       }
     };
 
+    // Validating one property: model-level validators take part only if they can check a single property.
+    const only = options?.propertyName;
     for (const validatorMetadata of metadata.validators) {
-      if (predicate(validatorMetadata)) {
+      if (!predicate(validatorMetadata)) {
+        continue;
+      }
+      if (only === undefined) {
         add(validatorMetadata, model, { ...base, ...(validatorMetadata.context as ValidationContextBase) } as ValidationContext);
+        continue;
+      }
+      const validator = validatorMetadata.getValidator();
+      if (validator.validateProperty) {
+        const context = {
+          ...base,
+          propertyName: only,
+          displayName: metadata.getProperty(only)?.displayName,
+          ...(validatorMetadata.context as ValidationContextBase),
+        } as ValidationContext;
+        add(validatorMetadata, model, context, forProperty(validator, only));
       }
     }
 
     for (const property of metadata.properties) {
+      if (only !== undefined && property.propertyName !== only) {
+        continue;
+      }
       for (const validatorMetadata of property.validators) {
         if (predicate(validatorMetadata, property)) {
           const context = {
@@ -446,6 +470,18 @@ interface Step {
   validator: Validator;
   value: unknown;
   context: ValidationContext;
+}
+
+/** A model-level validator that checks one property, as a sync step of a single-property validation. */
+function forProperty(validator: Validator, propertyName: string): Validator {
+  return {
+    name: validator.name,
+    group: validator.group,
+    context: validator.context,
+    metadata: validator.metadata,
+    isAsync: false,
+    validate: (model, context) => validator.validateProperty!(model, propertyName, context),
+  };
 }
 
 function runSync(step: Step): SyncValidationOutcome {

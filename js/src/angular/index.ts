@@ -304,14 +304,18 @@ export class FormValidators {
     ];
   }
 
-  /** Sync ValidatorFn for a property: validates the model with the control's value substituted. */
+  /**
+   * Sync ValidatorFn for a property: validates the model with the control's value substituted. The property's rules
+   * run, and so do model-level validators that can check a single property, such as `breeze` for Breeze's own rules.
+   */
   createSyncValidatorFn(modelInfoFn: () => EntityInfo, propertyName: string, group?: string, context?: GlobalValidationContext): ValidatorFn {
     const predicate = matchGroup(group);
     return (control: AbstractControl): ValidationErrors | null => {
       const { entity, entityType } = modelInfoFn();
       const errors = this.validationService
         .validateModelSync(withProperty(entity, propertyName, control.value), entityType, {
-          predicate: (v, p) => !!p && p.propertyName === propertyName && predicate(v, p),
+          propertyName,
+          predicate,
           context: { ...context, originalModel: entity },
         });
       return errorsToMap(errors);

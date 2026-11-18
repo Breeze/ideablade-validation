@@ -65,6 +65,14 @@ namespace Microsoft.Extensions.DependencyInjection
             return this;
         }
 
+        /// <summary>
+        /// Registers <see cref="DataAnnotationsValidator"/>, which runs a model's data annotations as a model-level
+        /// validator. Reference it from the metadata by <paramref name="name"/>, typically as a global validator.
+        /// Register it as <c>"breeze"</c> to pair it with the client's <c>breeze</c> validator: Breeze builds its
+        /// client-side rules from these annotations, so the same metadata entry runs them on both sides.
+        /// </summary>
+        public ValidationBuilder AddDataAnnotations(string name = "dataAnnotations") => AddValidators(DataAnnotationsValidator.Factory(name));
+
         /// <summary>Registers a source of property rules outside the metadata, consulted for <c>from</c> references.</summary>
         public ValidationBuilder AddRuleSource(IValidationRuleSource source)
         {

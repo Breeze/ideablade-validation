@@ -86,6 +86,25 @@ describe('breezeRuleSource', () => {
     expect(errorsOf('Ann')).toEqual([]);
   });
 
+  it('is async only for a property that has async Breeze validators', async () => {
+    // Otherwise a form would wait for an async check with nothing to do (Signal Forms: pending, so no submit).
+    const manager = makeManager();
+    const customer = manager.metadataStore.getEntityType('Customer') as EntityType;
+    customer.getProperty('email')!.validators.push(
+      new Validator('notTaken', async (value: unknown) => value !== 'taken@example.com', { messageTemplate: '%displayName% is taken' }),
+    );
+    const service = createValidationService({
+      metadata: { CustomerForm: { properties: { name: { from: 'Customer' }, email: { from: 'Customer' } } } },
+      ruleSources: [breezeRuleSource(manager.metadataStore)],
+    });
+    const inherited = (name: string) => (_v: unknown, p?: { propertyName: string }) => p?.propertyName === name;
+
+    expect(service.hasAsyncValidators('CustomerForm', inherited('name'))).toBe(false);
+    expect(service.hasAsyncValidators('CustomerForm', inherited('email'))).toBe(true);
+    const errors = await firstValueFrom(service.validateModelAsync({ name: 'Ann', email: 'taken@example.com' }, 'CustomerForm'));
+    expect(errors.map((e) => e.errorMessage)).toEqual(['email is taken']);
+  });
+
   it('knows every property of the entity type, with or without validators, and nothing else', () => {
     const source = breezeRuleSource(makeManager().metadataStore);
     expect(source.getPropertyRules('Customer', 'email')).toEqual({ validators: [] });

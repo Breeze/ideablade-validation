@@ -93,8 +93,7 @@ namespace IdeaBlade.Validation
             var errors = new List<ValidationError>();
             foreach (var item in Plan(false, model, modelType, options))
             {
-                var error = ((Validator)item.Validator).Validate(item.Value, item.Context);
-                if (error != null) errors.Add(error);
+                errors.AddRange(((Validator)item.Validator).ValidateAll(item.Value, item.Context));
             }
             ModelValidated?.Invoke(this, new ModelValidatedEventArgs(model, modelType, errors));
             return errors;
@@ -112,8 +111,7 @@ namespace IdeaBlade.Validation
             var errors = new List<ValidationError>();
             foreach (var item in Plan(false, model, modelType, options))
             {
-                var error = ((Validator)item.Validator).Validate(item.Value, item.Context);
-                if (error != null) errors.Add(error);
+                errors.AddRange(((Validator)item.Validator).ValidateAll(item.Value, item.Context));
             }
 
             var asyncItems = Plan(true, model, modelType, options).ToList();

@@ -24,6 +24,13 @@ export interface Validator {
    * needs only one metadata entry and runs each rule once.
    */
   validateAsync?(value: unknown, context?: ValidationContext): AsyncValidationOutcome;
+  /**
+   * Optional, for model-level validators: checks a single property of the model. A model-level validator normally
+   * has no part in validating one property (`ValidationOptions.propertyName`, which the form integrations use); one
+   * that implements this does, and reports that property's errors. `breeze` implements it, so Breeze's own property
+   * rules show on form fields like any other rule.
+   */
+  validateProperty?(model: unknown, propertyName: string, context?: ValidationContext): SyncValidationOutcome;
 }
 
 /** Synchronous validation function: return true when the value is valid. */

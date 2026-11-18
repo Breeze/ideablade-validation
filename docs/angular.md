@@ -178,6 +178,8 @@ export class CustomerFormComponent { ... }
 
 There's no attribute to add to each field. The field directive's selector is `[ngModel]`, so it attaches wherever `ngModel` is used. It does nothing until it knows a model.
 
+A field runs its property's rules, plus model-level validators that can check a single property. `breeze` is one of them, so on a Breeze entity a field shows Breeze's own rules for its property too ([breeze.md](breeze.md#on-form-fields)). The form element can be any element with `ngForm`, such as one card of a list: `<div ngForm [validationModel]="address">`.
+
 | Input | On | Default |
 |---|---|---|
 | `validationModel` | `<form>` or field | The field uses the form's. |

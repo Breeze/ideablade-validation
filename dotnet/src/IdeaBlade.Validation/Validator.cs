@@ -84,6 +84,17 @@ namespace IdeaBlade.Validation
             }
         }
 
+        /// <summary>
+        /// Runs this validator and returns all of its errors. The service calls this. A validator that can report
+        /// several errors at once, such as <see cref="Validators.DataAnnotationsValidator"/> (one per failed
+        /// attribute), overrides it; the default returns the single error of <see cref="Validate"/>.
+        /// </summary>
+        public virtual IReadOnlyList<ValidationError> ValidateAll(object? value, ValidationContext? context = null)
+        {
+            var error = Validate(value, context);
+            return error == null ? Array.Empty<ValidationError>() : new[] { error };
+        }
+
         /// <summary>Returns true when the value is valid.</summary>
         protected abstract bool ValidateCore(object? value, ValidatorFunctionContext context);
     }

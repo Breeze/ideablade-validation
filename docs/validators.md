@@ -64,6 +64,8 @@ export const multipleOf = { name: 'multipleOf', fn: (g, c) => new MultipleOfVali
 
 The validator function receives `(value, context)`. The `context` contains `model`, `modelType`, `propertyName`, `displayName`, `isClient`, `isServer`, your metadata `context` settings, values from context providers and options, and `expressionScope` (with `store`, when available). You can add values to `context` for use in the message, as `range` does with `%minValueText%`.
 
+A model-level validator whose rules belong to properties, as `breeze`'s do, can implement `validateProperty(model, propertyName, context)`. It then takes part when a single property is validated (`ValidationOptions.propertyName`, which the form integrations use for each control) and reports that property's errors. Without it, a model-level validator only runs when the whole model is validated.
+
 ### Registering
 
 | Environment | How |

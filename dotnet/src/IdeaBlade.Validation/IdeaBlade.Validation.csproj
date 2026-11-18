@@ -29,6 +29,8 @@
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
     <PackageReference Include="System.Text.Json" Version="10.0.15" />
     <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="10.0.15" />
+    <!-- DataAnnotationsValidator; part of the framework on net8.0 and later. -->
+    <PackageReference Include="System.ComponentModel.Annotations" Version="5.0.0" />
   </ItemGroup>
 
   <ItemGroup>
