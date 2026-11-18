@@ -24,7 +24,7 @@ All of these are registered by default (`defaultValidators` in TS, `DefaultValid
 | `invalidValues` | `values` (entries like `"/^Z/i"` are patterns) | `'%value%' is not a valid value for %displayName%` |
 | `validValues` | `values` | same |
 | `expression` | `expression`, `skipEmpty` | `%displayName% is invalid` |
-| `unique` | `ignoreCase`. Needs `store(type)`, so it works in entity-store validation, with `options.store`, or with Breeze. | `%displayName% must be unique` |
+| `unique` | `ignoreCase`. Needs `store(type)`: entity store validation and `options.store` supply one, and so do the store resolvers (`storeResolvers`, such as `breezeStoreQuery`) for single models and form controls. Without a store it passes. | `%displayName% must be unique` |
 | `breeze` (TS, from `@ideablade/validation/breeze`) | Breeze's sync validators, plus its async ones (Breeze 3) in `validateModelAsync` and `validate` | Breeze's own messages |
 
 ### Range bounds

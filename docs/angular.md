@@ -47,7 +47,8 @@ Feature areas can add metadata with `provideValidationMetadata(featureMetadata)`
 | `provideValidatorContext(() => provider)` | Adds a context provider that can `inject()`. |
 | `provideExpressionScope(scope \| () => scope)` | Adds functions or values for expressions. |
 | `provideModelTypeResolvers(...resolvers)` | Adds model type resolvers (also `modelTypeResolvers` in `provideValidation`). |
-| Tokens | `VALIDATION_METADATA`, `VALIDATOR_FACTORY`, `VALIDATOR_CONTEXT_PROVIDER`, `VALIDATION_EXPRESSION_SCOPE`, `VALIDATION_EXPRESSION_EVALUATOR`, `VALIDATION_SERVICE_OPTIONS`, `VALIDATION_MODEL_TYPE_RESOLVER`. |
+| `provideStoreResolvers(...resolvers)` | Adds store resolvers, which give `store(type)` and `unique` a store in forms (also `storeResolvers` in `provideValidation`). |
+| Tokens | `VALIDATION_METADATA`, `VALIDATOR_FACTORY`, `VALIDATOR_CONTEXT_PROVIDER`, `VALIDATION_EXPRESSION_SCOPE`, `VALIDATION_EXPRESSION_EVALUATOR`, `VALIDATION_SERVICE_OPTIONS`, `VALIDATION_MODEL_TYPE_RESOLVER`, `VALIDATION_STORE_RESOLVER`. |
 
 ## Using the service
 

@@ -78,6 +78,22 @@ describe('Angular providers', () => {
     expect(errors()).toEqual([]);
   });
 
+  it('FormValidators use the store resolvers, so unique works in a form control', () => {
+    const tags = [{ kind: 'Tag', name: 'a' }];
+    const injector = createInjector([
+      provideValidation({
+        metadata: { Tag: { properties: { name: { displayName: 'Name', validators: ['unique'] } } } },
+        storeResolvers: [(m) => ((m as { kind?: string })?.kind === 'Tag' ? () => tags : undefined)],
+      }),
+    ]);
+    const forms = injector.get(FormValidators);
+    const model = { kind: 'Tag', name: '' };
+    const control = new FormControl('a', forms.createSyncValidatorFn(() => ({ entity: model, entityType: 'Tag' }), 'name'));
+    expect(Object.keys(control.errors ?? {})).toEqual(['unique_name']);
+    control.setValue('c');
+    expect(control.errors).toBeNull();
+  });
+
   it('FormValidators validate a control against the metadata', async () => {
     const injector = setup();
     const forms = injector.get(FormValidators);

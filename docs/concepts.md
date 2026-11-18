@@ -23,7 +23,7 @@
 
 | Concept | What it is |
 |---|---|
-| **Model type** | A string that names the kind of object, such as `"Customer"`. Breeze uses `entityType.shortName`; .NET uses the CLR type name by default. Metadata is keyed by model type. Where code has only a model to go on, it asks the registered **model type resolvers** (`modelTypeResolvers` option, `service.resolveModelType(model)`), such as `breezeModelType`. |
+| **Model type** | A string that names the kind of object, such as `"Customer"`. Breeze uses `entityType.shortName`; .NET uses the CLR type name by default. Metadata is keyed by model type. Where code has only a model to go on, it asks the registered **model type resolvers** (`modelTypeResolvers` option, `service.resolveModelType(model)`), such as `breezeModelType`. Likewise, validations that have no store of their own (a single model, a form control) get `store(type)` from the **store resolvers** (`storeResolvers`, `service.resolveStore(model)`), such as `breezeStoreQuery`. |
 | **Metadata** | JSON that lists, per model type, the model-level validators, property validators, conditions and inheritance (`extends`). A `global` section applies to all types. See [metadata.md](metadata.md). |
 | **Validator factory** | `{ name, fn(group, context) => Validator }`. You register factories through dependency injection (Angular providers, React provider props, .NET `IServiceCollection`) or as plain arrays. Metadata refers to validators by `name`. See [validators.md](validators.md). |
 | **Validator** | Validates one value. *Sync* validators return errors directly; *async* validators return an Observable (TS) or a Task (.NET). Several factories may share a name, one sync and one async; `"async": true` in metadata selects the async one. |

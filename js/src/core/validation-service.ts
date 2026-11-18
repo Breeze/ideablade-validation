@@ -105,6 +105,14 @@ export interface ValidationOptions {
  */
 export type ModelTypeResolver = (model: unknown) => string | undefined;
 
+/**
+ * Returns the `store(type)` lookup for a model, or undefined when it doesn't recognize the model. Used when a
+ * validation has no store of its own, such as a single model or a form control, so that `store(type)` in
+ * expressions and the `unique` validator can see the model's siblings.
+ * @example const breezeStoreQuery: StoreResolver = (m) => isBreezeEntity(m) ? (type) => m.entityAspect.entityManager.getEntities(type) : undefined;
+ */
+export type StoreResolver = (model: unknown) => StoreQuery | undefined;
+
 export interface ValidationServiceOptions {
   /** Providers that add context values per model (Angular: VALIDATOR_CONTEXT_PROVIDER). */
   contextProviders?: readonly ValidatorContextProvider[];
@@ -113,6 +121,12 @@ export interface ValidationServiceOptions {
    * directives. The first resolver that returns a name wins (Angular: VALIDATION_MODEL_TYPE_RESOLVER).
    */
   modelTypeResolvers?: readonly ModelTypeResolver[];
+  /**
+   * Provide `store(type)` for validations that don't pass one, such as `validateModelSync` and form controls.
+   * The first resolver that returns a lookup wins (Angular: VALIDATION_STORE_RESOLVER). An explicit
+   * `options.store`, and the store of entity store validation, take precedence.
+   */
+  storeResolvers?: readonly StoreResolver[];
   /** Trusted functions/values visible to all expressions (e.g. `{ today: () => new Date() }`). */
   expressionScope?: Record<string, unknown>;
   /**
@@ -148,6 +162,7 @@ export class ValidationService {
   private readonly revalidateRequested = new Subject<unknown>();
   private readonly contextProviders: readonly ValidatorContextProvider[];
   private readonly modelTypeResolvers: readonly ModelTypeResolver[];
+  private readonly storeResolvers: readonly StoreResolver[];
   private readonly expressionScope: Record<string, unknown>;
   private readonly asyncTimeout: number;
   private readonly onAsyncTimeout?: ValidationServiceOptions['onAsyncTimeout'];
@@ -159,6 +174,7 @@ export class ValidationService {
   ) {
     this.contextProviders = options.contextProviders ?? [];
     this.modelTypeResolvers = options.modelTypeResolvers ?? [];
+    this.storeResolvers = options.storeResolvers ?? [];
     this.expressionScope = options.expressionScope ?? {};
     this.asyncTimeout = options.asyncTimeout ?? 60_000;
     this.onAsyncTimeout = options.onAsyncTimeout;
@@ -179,6 +195,17 @@ export class ValidationService {
   /** Emits after each model validation (sync or async). */
   get modelValidated$(): Observable<{ modelInfo: EntityInfo; validationErrors: ValidationError[] }> {
     return this.modelValidated.asObservable();
+  }
+
+  /** The `store(type)` lookup for `model` from the {@link ValidationServiceOptions.storeResolvers}, or undefined. */
+  resolveStore(model: unknown): StoreQuery | undefined {
+    for (const resolve of this.storeResolvers) {
+      const store = resolve(model);
+      if (store) {
+        return store;
+      }
+    }
+    return undefined;
   }
 
   /** Re-runs all active entity store validations, e.g. after a change the store does not report. */
@@ -306,10 +333,12 @@ export class ValidationService {
     return entities.filter((ei) => this.validationMetadata.getModelMetadata(ei.entityType).evalCondition(entities, ei.entity, resolver, scope));
   }
 
-  private buildExpressionScope(options?: ValidationOptions): Record<string, unknown> {
+  /** With a `model`, a missing `options.store` falls back to the store resolvers. */
+  private buildExpressionScope(options?: ValidationOptions, model?: unknown): Record<string, unknown> {
+    const store = options?.store ?? (model === undefined ? undefined : this.resolveStore(model));
     return {
       ...this.expressionScope,
-      ...(options?.store ? { store: options.store } : {}),
+      ...(store ? { store } : {}),
       ...options?.expressionScope,
     };
   }
@@ -379,7 +408,7 @@ export class ValidationService {
       isClient: true,
       isServer: false,
       expressionEvaluator: this.validationMetadata.expressionEvaluator,
-      expressionScope: this.buildExpressionScope(options),
+      expressionScope: this.buildExpressionScope(options, model),
     };
 
     const steps: Step[] = [];

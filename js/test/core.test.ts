@@ -50,6 +50,29 @@ describe('model type resolvers', () => {
   });
 });
 
+describe('store resolvers', () => {
+  const tagMetadata = { Tag: { properties: { name: { displayName: 'Name', validators: ['unique'] } } } };
+  const tags = [{ kind: 'Tag', name: 'a' }, { kind: 'Tag', name: 'b' }];
+  const tagStore = (m: unknown) => ((m as { kind?: string })?.kind === 'Tag' ? () => tags : undefined);
+
+  it('gives validations without a store of their own a store(type), so unique works', () => {
+    const service = createValidationService({ metadata: tagMetadata, storeResolvers: [() => undefined, tagStore] });
+    expect(service.validateModelSync({ kind: 'Tag', name: 'a' }, 'Tag').map((e) => e.errorMessage)).toEqual(['Name must be unique']);
+    expect(service.validateModelSync(tags[0], 'Tag')).toEqual([]); // the model itself doesn't count
+    expect(service.resolveStore({})).toBeUndefined();
+  });
+
+  it('an explicit options.store takes precedence', () => {
+    const service = createValidationService({ metadata: tagMetadata, storeResolvers: [tagStore] });
+    expect(service.validateModelSync({ kind: 'Tag', name: 'a' }, 'Tag', { store: () => [] })).toEqual([]);
+  });
+
+  it('without a resolver, unique has nothing to compare against and passes', () => {
+    const service = createValidationService({ metadata: tagMetadata });
+    expect(service.validateModelSync({ kind: 'Tag', name: 'a' }, 'Tag')).toEqual([]);
+  });
+});
+
 describe('ValidationService (sync)', () => {
   const service = createValidationService({ metadata });
 

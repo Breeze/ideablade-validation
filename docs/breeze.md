@@ -62,7 +62,7 @@ For every entity type, this adds the following Breeze validators:
 - one **entity-level** validator for model-level rules.
 - `…Async` variants when async rules exist. They run only the async rules, so `validateEntityAsync()` and save don't report a sync rule twice.
 
-Inside these validators, `store(type)` resolves to `entity.entityAspect.entityManager.getEntities(type)`. The `breeze` validator is skipped, which prevents recursion.
+Inside these validators, `store(type)` returns the live entities of that type in the entity's `EntityManager`: Unchanged, Added and Modified, never deleted or detached ones. The `breeze` validator is skipped, which prevents recursion.
 
 `uninstall()` removes the validators. Breeze keeps errors that removed validators already recorded, so call `entityAspect.clearValidationErrors()` if needed.
 
@@ -94,3 +94,20 @@ The model type is `entity.entityType.shortName`. Use the same names as keys in y
 createValidationService({ metadata, validators: [breezeValidator], modelTypeResolvers: [breezeModelType] });
 // Angular: provideValidation({ metadata, validators: [breezeValidator], modelTypeResolvers: [breezeModelType] })
 ```
+
+## `store(type)` for single entities and forms (`breezeStoreQuery`)
+
+`store(type)` in expressions, and the `unique` validator that depends on it, need to see an entity's siblings. Entity store validation and the installed Breeze validators supply them. Validating a single entity (`validateModelSync`) or a form control doesn't, so `unique` would pass there without checking anything.
+
+`breezeStoreQuery` is a store resolver that fills that gap. For a Breeze entity, `store(type)` returns the live entities of that type in the entity's own `EntityManager`, without deleted or detached ones. A form control's view of the entity resolves the same way.
+
+```ts
+provideValidation({
+  metadata,
+  validators: [breezeValidator],
+  modelTypeResolvers: [breezeModelType],
+  storeResolvers: [breezeStoreQuery],
+});
+```
+
+An explicit `options.store`, and the store of entity store validation, still take precedence.

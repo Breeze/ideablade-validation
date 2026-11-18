@@ -2,7 +2,7 @@ import { DataProperty, DataType, EntityManager, EntityState, EntityType, Metadat
 import { filter, firstValueFrom, skip, toArray } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 
-import { breezeEntityStore, breezeModelType, breezeValidator, installBreezeValidators } from '../src/breeze/index.js';
+import { breezeEntityStore, breezeModelType, breezeStoreQuery, breezeValidator, installBreezeValidators } from '../src/breeze/index.js';
 import { asyncValidator, createValidationService } from '../src/index.js';
 
 function makeManager(): EntityManager {
@@ -48,6 +48,44 @@ describe('breezeModelType', () => {
     expect(breezeModelType(null)).toBeUndefined();
     const service = createValidationService({ metadata, modelTypeResolvers: [breezeModelType] });
     expect(service.resolveModelType(c)).toBe('Customer');
+  });
+});
+
+describe('breezeStoreQuery', () => {
+  const uniqueEmail = { Customer: { properties: { email: { displayName: 'E-mail', validators: ['unique'] } } } };
+
+  it('lets unique see the live entities in the manager of the entity, without deleted ones', () => {
+    const manager = makeManager();
+    const service = createValidationService({ metadata: uniqueEmail, storeResolvers: [breezeStoreQuery] });
+    const c1 = manager.createEntity('Customer', { id: 1, email: 'a@b.co' }, EntityState.Unchanged) as Customer;
+    const c2 = manager.createEntity('Customer', { id: 2, email: 'a@b.co' }, EntityState.Unchanged) as Customer;
+    expect(service.validateModelSync(c1, 'Customer').map((e) => e.errorMessage)).toEqual(['E-mail must be unique']);
+
+    c2.entityAspect.setDeleted();
+    expect(service.validateModelSync(c1, 'Customer')).toEqual([]);
+  });
+
+  it('returns undefined for plain objects and detached entities', () => {
+    const manager = makeManager();
+    const c = manager.createEntity('Customer', { id: 1 }) as Customer;
+    expect(breezeStoreQuery(c)).toBeTypeOf('function');
+    expect(breezeStoreQuery({ email: 'x' })).toBeUndefined();
+    manager.detachEntity(c);
+    expect(breezeStoreQuery(c)).toBeUndefined();
+  });
+
+  it('installBreezeValidators ignores deleted entities for unique too', () => {
+    const manager = makeManager();
+    const service = createValidationService({ metadata: uniqueEmail });
+    const uninstall = installBreezeValidators(manager.metadataStore, service);
+    const c1 = manager.createEntity('Customer', { id: 1, email: 'a@b.co' }, EntityState.Unchanged) as Customer;
+    const c2 = manager.createEntity('Customer', { id: 2, email: 'a@b.co' }, EntityState.Unchanged) as Customer;
+    expect(c1.entityAspect.validateEntity()).toBe(false);
+
+    c2.entityAspect.setDeleted();
+    c1.entityAspect.clearValidationErrors();
+    expect(c1.entityAspect.validateEntity()).toBe(true);
+    uninstall();
   });
 });
 

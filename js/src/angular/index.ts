@@ -49,6 +49,7 @@ import { ValidationMetadata } from '../core/metadata.js';
 import type { ValidationError } from '../core/validation-error.js';
 import {
   type ModelTypeResolver,
+  type StoreResolver,
   type ModelValidationState,
   type NotifyingEntityStore,
   type ValidationOptions,
@@ -70,6 +71,8 @@ export const VALIDATOR_FACTORY = new InjectionToken<ValidatorFactory[]>('IdeaBla
 export const VALIDATOR_CONTEXT_PROVIDER = new InjectionToken<ValidatorContextProvider[]>('IdeaBlade.ValidatorContextProvider');
 /** Model type resolvers (multi; the first that returns a name wins). */
 export const VALIDATION_MODEL_TYPE_RESOLVER = new InjectionToken<ModelTypeResolver[]>('IdeaBlade.ValidationModelTypeResolver');
+/** Store resolvers (multi; the first that returns a lookup wins). */
+export const VALIDATION_STORE_RESOLVER = new InjectionToken<StoreResolver[]>('IdeaBlade.ValidationStoreResolver');
 /** Trusted functions/values visible to expressions (multi; objects are merged). */
 export const VALIDATION_EXPRESSION_SCOPE = new InjectionToken<Record<string, unknown>[]>('IdeaBlade.ValidationExpressionScope');
 /** Replaces the default safe expression evaluator. */
@@ -90,6 +93,8 @@ export interface ValidationConfig extends Pick<ValidationServiceOptions, 'asyncT
   expressionScope?: Record<string, unknown>;
   /** Resolve the model type of models where none is given, such as `breezeModelType`. */
   modelTypeResolvers?: ModelTypeResolver[];
+  /** Provide `store(type)` where a validation has none, such as `breezeStoreQuery`. */
+  storeResolvers?: StoreResolver[];
   /** Replaces the default {@link SafeExpressionEvaluator}. */
   expressionEvaluator?: ExpressionEvaluator;
 }
@@ -117,6 +122,7 @@ export function provideValidation(config: ValidationConfig = {}): EnvironmentPro
           ...(inject(VALIDATION_SERVICE_OPTIONS, { optional: true }) ?? {}),
           contextProviders: flat(inject(VALIDATOR_CONTEXT_PROVIDER, { optional: true })),
           modelTypeResolvers: flat(inject(VALIDATION_MODEL_TYPE_RESOLVER, { optional: true })),
+          storeResolvers: flat(inject(VALIDATION_STORE_RESOLVER, { optional: true })),
           expressionScope: Object.assign({}, ...flat(inject(VALIDATION_EXPRESSION_SCOPE, { optional: true }))),
         }),
     },
@@ -134,6 +140,9 @@ export function provideValidation(config: ValidationConfig = {}): EnvironmentPro
   }
   if (config.modelTypeResolvers?.length) {
     providers.push(...provideModelTypeResolvers(...config.modelTypeResolvers));
+  }
+  if (config.storeResolvers?.length) {
+    providers.push(...provideStoreResolvers(...config.storeResolvers));
   }
   if (config.expressionScope) {
     providers.push({ provide: VALIDATION_EXPRESSION_SCOPE, useValue: config.expressionScope, multi: true });
@@ -173,6 +182,11 @@ export function provideValidatorContext(factory: () => ValidatorContextProvider)
 /** Registers model type resolvers, such as `breezeModelType`. */
 export function provideModelTypeResolvers(...resolvers: ModelTypeResolver[]): Provider[] {
   return resolvers.map((r) => ({ provide: VALIDATION_MODEL_TYPE_RESOLVER, useValue: r, multi: true }));
+}
+
+/** Registers store resolvers, such as `breezeStoreQuery`. */
+export function provideStoreResolvers(...resolvers: StoreResolver[]): Provider[] {
+  return resolvers.map((r) => ({ provide: VALIDATION_STORE_RESOLVER, useValue: r, multi: true }));
 }
 
 /** Makes trusted functions/values available to expressions. */

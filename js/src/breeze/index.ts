@@ -27,7 +27,7 @@ import type { EntityInfo, ValidationContext, ValidationContextBase, ValidatorFun
 import { createEntityStore } from '../core/entity-store.js';
 import type { ValidatorMetadata } from '../core/metadata.js';
 import { ValidationError, getPath } from '../core/validation-error.js';
-import type { ModelTypeResolver, NotifyingEntityStore, ValidationOptions, ValidationService } from '../core/validation-service.js';
+import type { ModelTypeResolver, NotifyingEntityStore, StoreResolver, ValidationOptions, ValidationService } from '../core/validation-service.js';
 import { type Validator, ValidatorBase, type ValidatorFactory } from '../core/validator.js';
 
 /** True for Breeze entities (objects with an entityAspect). */
@@ -40,6 +40,28 @@ export function isBreezeEntity(value: unknown): value is Entity {
  * Register it with `modelTypeResolvers: [breezeModelType]` (Angular: `provideValidation({ modelTypeResolvers: [breezeModelType] })`).
  */
 export const breezeModelType: ModelTypeResolver = (model) => (isBreezeEntity(model) ? model.entityType.shortName : undefined);
+
+/**
+ * The entity states that count as "in the store": Unchanged, Added and Modified. Deleted entities stay in the manager
+ * until saved, but they are on their way out; detached entities aren't in it at all.
+ */
+const LIVE_STATES = [EntityState.Unchanged, EntityState.Added, EntityState.Modified];
+
+/** The live entities of a manager (see {@link LIVE_STATES}), optionally of some types and in some states. */
+function liveEntities(manager: EntityManager, entityTypes?: string | string[], states: EntityState[] = LIVE_STATES): Entity[] {
+  return manager.getEntities(entityTypes, states.filter((st) => !st.isDetached())) as Entity[];
+}
+
+/**
+ * Store resolver for Breeze entities: `store(type)` returns the live entities of that type in the entity's
+ * EntityManager (not deleted or detached); undefined for anything else, or for an entity without a manager.
+ * Register it with `storeResolvers: [breezeStoreQuery]` so that `unique` and `store(type)` work when validating a
+ * single entity or a form control, not just during entity store validation.
+ */
+export const breezeStoreQuery: StoreResolver = (model) => {
+  const manager = isBreezeEntity(model) ? model.entityAspect.entityManager : undefined;
+  return manager ? (entityType) => liveEntities(manager, entityType) : undefined;
+};
 
 /**
  * Validator `breeze`: runs Breeze's validation for the model (an entity) and maps the resulting errors.
@@ -185,7 +207,7 @@ export function installBreezeValidators(
 
     const run = (entity: Entity, predicate: ValidationOptions['predicate'], async: boolean): Promise<ValidationError[]> | ValidationError[] => {
       const opts: ValidationOptions = {
-        store: (type) => entity.entityAspect.entityManager?.getEntities(type) ?? [],
+        store: breezeStoreQuery(entity) ?? (() => []),
         ...options.validationOptions,
         // The async Breeze validator runs only the async rules; the sync one already covers the others.
         predicate: (v, p) => notBreeze(v) && (!async || v.async) && userPredicate(v, p) && predicate!(v, p),
@@ -267,15 +289,12 @@ export interface BreezeEntityStoreOptions {
   entityStates?: EntityState[];
 }
 
-const LIVE_STATES = [EntityState.Unchanged, EntityState.Added, EntityState.Modified];
-
 /**
  * Wraps a Breeze EntityManager as an {@link EntityStore}; emits whenever entities are added, removed or changed.
  * Deleted and detached entities are left out by default (see {@link BreezeEntityStoreOptions.entityStates}).
  */
 export function breezeEntityStore(manager: EntityManager, options: BreezeEntityStoreOptions = {}): NotifyingEntityStore {
-  const states = (options.entityStates ?? LIVE_STATES).filter((s) => !s.isDetached());
-  const query = (entityTypes?: string | string[]) => manager.getEntities(entityTypes, states) as Entity[];
+  const query = (entityTypes?: string | string[]) => liveEntities(manager, entityTypes, options.entityStates);
   return createEntityStore({
     entities: () => query(options.entityTypes).map((entity) => ({ entityType: entity.entityType.shortName, entity })),
     changes: (notify) => {
