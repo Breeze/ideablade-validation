@@ -88,7 +88,7 @@ Model conditions, `findEntity(id, type)` and the `unique` validator all work aga
 
 The model type is `entity.entityType.shortName`. Use the same names as keys in your metadata, and on the server, where the .NET library uses the CLR type name by default.
 
-`breezeModelType` is a model type resolver. It returns that name for Breeze entities and `undefined` for anything else. Register it so that code which finds the type from the model itself recognizes entities. The Angular template-driven-forms directives are an example.
+`breezeModelType` is a [model type resolver](concepts.md#resolvers). It returns that name for Breeze entities and `undefined` for anything else. Register it so that code which finds the type from the model itself recognizes entities. The Angular template-driven-forms directives are an example.
 
 ```ts
 createValidationService({ metadata, validators: [breezeValidator], modelTypeResolvers: [breezeModelType] });
@@ -99,7 +99,7 @@ createValidationService({ metadata, validators: [breezeValidator], modelTypeReso
 
 `store(type)` in expressions, and the `unique` validator that depends on it, need to see an entity's siblings. Entity store validation and the installed Breeze validators supply them. Validating a single entity (`validateModelSync`) or a form control doesn't, so `unique` would pass there without checking anything.
 
-`breezeStoreQuery` is a store resolver that fills that gap. For a Breeze entity, `store(type)` returns the live entities of that type in the entity's own `EntityManager`, without deleted or detached ones. A form control's view of the entity resolves the same way.
+`breezeStoreQuery` is a [store resolver](concepts.md#resolvers) that fills that gap. For a Breeze entity, `store(type)` returns the live entities of that type in the entity's own `EntityManager`, without deleted or detached ones. A form control's view of the entity resolves the same way.
 
 ```ts
 provideValidation({

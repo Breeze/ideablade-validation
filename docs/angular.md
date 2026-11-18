@@ -146,9 +146,9 @@ There's no attribute to add to each field. The field directive's selector is `[n
 | `validationGroup` | `<form>` or field | The form's; without one, only validators without a group run. |
 | `validationContext` | `<form>` or field | The form's. |
 
-### Model type resolvers
+### Resolvers
 
-When a model doesn't have an explicit `validationModelType`, the directives ask the registered model type resolvers. A resolver is a function `(model) => string | undefined`. It returns a type name for the models it recognizes and `undefined` for everything else. Resolvers run in registration order, and the first name wins. They work for any kind of object, not just Breeze entities:
+When a model doesn't have an explicit `validationModelType`, the directives ask the registered model type resolvers. Register store resolvers too, so that `unique` and `store(type)` work in forms. [Resolvers](concepts.md#resolvers) explains both kinds and how to write your own.
 
 ```ts
 provideValidation({
@@ -157,6 +157,7 @@ provideValidation({
     breezeModelType,                                  // Breeze entities: entityType.shortName
     (model) => (model as { $type?: string })?.$type,  // your own convention
   ],
+  storeResolvers: [breezeStoreQuery],                 // store(type) and unique for Breeze entities
 });
 ```
 
