@@ -47,9 +47,23 @@ Feature areas can add metadata with `provideValidationMetadata(featureMetadata)`
 | `provideValidatorContext(() => provider)` | Adds a context provider that can `inject()`. |
 | `provideExpressionScope(scope \| () => scope)` | Adds functions or values for expressions. |
 | `provideModelTypeResolvers(...resolvers)` | Adds model type resolvers (also `modelTypeResolvers` in `provideValidation`). |
-| `provideStoreResolvers(...resolvers)` | Adds store resolvers, which give `store(type)` and `unique` a store in forms (also `storeResolvers` in `provideValidation`). |
+| `provideValidationScope(() => entityStore)` | Gives a route or component its own `ValidationService` and `FormValidators`, with its own entity store ([below](#scopes)). |
 | `provideRuleSources(...sources)` | Adds rule sources for `from` references; a function may `inject()` (also `ruleSources` in `provideValidation`). |
-| Tokens | `VALIDATION_METADATA`, `VALIDATOR_FACTORY`, `VALIDATOR_CONTEXT_PROVIDER`, `VALIDATION_EXPRESSION_SCOPE`, `VALIDATION_EXPRESSION_EVALUATOR`, `VALIDATION_SERVICE_OPTIONS`, `VALIDATION_MODEL_TYPE_RESOLVER`, `VALIDATION_STORE_RESOLVER`, `VALIDATION_RULE_SOURCE`. |
+| Tokens | `VALIDATION_METADATA`, `VALIDATOR_FACTORY`, `VALIDATOR_CONTEXT_PROVIDER`, `VALIDATION_EXPRESSION_SCOPE`, `VALIDATION_EXPRESSION_EVALUATOR`, `VALIDATION_SERVICE_OPTIONS`, `VALIDATION_MODEL_TYPE_RESOLVER`, `VALIDATION_RULE_SOURCE`. |
+
+## Scopes
+
+A validation service has one entity store, and shares its scope: one service for an app with one global unit of work, one per route for a unit of work per route ([concepts.md](concepts.md#scopes-a-service-and-its-entity-store)). `provideValidationScope` gives a route or component its own service, with the same metadata and options as the app's:
+
+```ts
+{
+  path: 'orders',
+  component: OrdersComponent,
+  providers: [OrdersUnitOfWork, provideValidationScope(() => breezeEntityStore(inject(OrdersUnitOfWork).manager))],
+}
+```
+
+The forms in the scope validate in its store: `store(type)` and `unique` see its entities, and the fields re-validate when they change, such as an entity changed in code. When the scope moves on to another unit of work, `inject(ValidationService).setEntityStore(store)`.
 
 ## Using the service
 
@@ -93,7 +107,7 @@ For other sources, see [Writing an entity store](concepts.md#writing-an-entity-s
 readonly customer = signal<Customer>(...);
 readonly errors = validationErrors(this.customer, 'Customer');          // Signal<ValidationError[]>, sync rules
 readonly state  = validationState(this.customer, 'Customer');           // Signal<{ errors, pending }>, sync + async
-readonly emailErrors = computed(() => this.errors().filter(e => e.propertyName === 'email'));
+readonly emailErrors = computed(() => this.errors().filter(e => e.isFor('email')));
 ```
 
 Both functions must be called in an injection context (field initializers, a constructor, or `runInInjectionContext`). For objects mutated in place, such as Breeze entities, read a change counter inside the function so the signal recomputes:
@@ -125,8 +139,8 @@ export class NameEditorComponent {
 }
 ```
 
-- **Where errors show:** an error of a property shows on that property's field. Model-level errors, and errors of properties the form has no field for, show on the field you passed, usually the form's root.
-- **Sync rules** run whenever the model changes, so cross-property rules stay up to date.
+- **Where errors show:** an error shows on the field of each property it is about (`propertyNames`), so a rule spanning two dates shows on both. Errors about the model as a whole, and about properties the form has no field for, show on the field you passed, usually the form's root.
+- **Sync rules** run whenever the model changes, so cross-property rules stay up to date. They also run when the service's entity store changes.
 - **Async rules** run debounced (`debounce`, default 300 ms), once the sync ones pass. They include Breeze's async validators when the rules come from `breezeRuleSource`.
 - **The errors:** `kind` is the framework's error key (`required_firstName`), `message` the error message, and `validationError` the full `ValidationError`.
 
@@ -143,7 +157,16 @@ A view model whose properties inherit an entity's rules with [`from`](metadata.m
 
 ## Reactive forms
 
-`FormValidators` turns the metadata rules for a property into Angular `ValidatorFn`/`AsyncValidatorFn`. The control's value is substituted into a view of the model; the model itself is not modified. The control's `errors` map error keys to `ValidationError`s:
+`validateFormGroup` validates a form group as a whole, as the template-driven directives do ([below](#template-driven-forms)): each control's errors come from validating the model with all the group's current values, and a change in one control re-checks the others. Control names are property names.
+
+```ts
+private readonly fv = inject(FormValidators);
+readonly form = inject(FormBuilder).group({ startDate: [this.booking.startDate], endDate: [this.booking.endDate] });
+readonly validation = this.fv.validateFormGroup(this.form, () => ({ entity: this.booking, entityType: 'Booking' }));
+// this.validation.modelErrors(): errors about the booking as a whole
+```
+
+For single controls, `FormValidators` turns the metadata rules into Angular `ValidatorFn`/`AsyncValidatorFn`. The control's value is substituted into a view of the model; the model itself is not modified. The control's `errors` map error keys to `ValidationError`s, those about its property:
 
 ```ts
 private readonly fv = inject(FormValidators);
@@ -159,7 +182,7 @@ readonly form = inject(FormBuilder).group({
 
 ## Template-driven forms
 
-Import `ValidationFormsDirectives` next to `FormsModule`. Every `ngModel` is then validated against the metadata rules of its property. Sync rules run as an Angular validator, async rules as an async validator.
+Import `ValidationFormsDirectives` next to `FormsModule`. Every `ngModel` is then validated against the metadata rules about its property. Sync rules run as an Angular validator, async rules as an async validator.
 
 ```ts
 @Component({
@@ -178,7 +201,21 @@ export class CustomerFormComponent { ... }
 
 There's no attribute to add to each field. The field directive's selector is `[ngModel]`, so it attaches wherever `ngModel` is used. It does nothing until it knows a model.
 
-A field runs its property's rules, plus model-level validators that can check a single property. `breeze` is one of them, so on a Breeze entity a field shows Breeze's own rules for its property too ([breeze.md](breeze.md#on-form-fields)). The form element can be any element with `ngForm`, such as one card of a list: `<div ngForm [validationModel]="address">`.
+**A form validates its model as a whole.** Whenever a field changes, the form validates the model once, with every field's current value, and each field shows the errors about its property:
+
+- its property's rules, and model-level rules that name it (`propertyNames`, [concepts.md](concepts.md#rules-that-span-properties)), so a "start before end" rule shows on both dates, and a change in one re-checks the other;
+- rules whose `condition` reads another field are re-checked when that field changes;
+- on a Breeze entity, Breeze's own rules for the property, through the `breeze` validator ([breeze.md](breeze.md#on-form-fields)).
+
+Errors about the model as a whole are the form's: `#form="validationForm"` exposes `modelErrors()` (and `errors()`, all of them). The form also re-validates when the service's entity store changes ([Scopes](#scopes)), and on `revalidate()`. The form element can be any element with `ngForm`, such as one card of a list: `<div ngForm [validationModel]="address">`.
+
+```html
+<form [validationModel]="booking" #form="validationForm">
+  <input name="startDate" [(ngModel)]="booking.startDate" />
+  <input name="endDate" [(ngModel)]="booking.endDate" />
+  @for (e of form.modelErrors(); track e.key) { <small>{{ e.errorMessage }}</small> }
+</form>
+```
 
 | Input | On | Default |
 |---|---|---|
@@ -190,7 +227,7 @@ A field runs its property's rules, plus model-level validators that can check a 
 
 ### Resolvers
 
-When a model doesn't have an explicit `validationModelType`, the directives ask the registered model type resolvers. Register store resolvers too, so that `unique` and `store(type)` work in forms. [Resolvers](concepts.md#resolvers) explains both kinds and how to write your own.
+When a model doesn't have an explicit `validationModelType`, the directives ask the registered model type resolvers ([concepts.md](concepts.md#resolvers)).
 
 ```ts
 provideValidation({
@@ -199,7 +236,6 @@ provideValidation({
     breezeModelType,                                  // Breeze entities: entityType.shortName
     (model) => (model as { $type?: string })?.$type,  // your own convention
   ],
-  storeResolvers: [breezeStoreQuery],                 // store(type) and unique for Breeze entities
 });
 ```
 
@@ -211,4 +247,4 @@ A field can bring its own model, for example an `ngModel` outside a form:
 <input [(ngModel)]="note.text" [validationModel]="note" validationModelType="Note" validationPropertyName="text" />
 ```
 
-As with reactive forms, the control's value is substituted into a view of the model, and the control's `errors` map error keys to `ValidationError`s. When a form or field input changes, such as `validationGroup`, the control re-validates. Async rules are debounced by 300 ms.
+A field that sets its own model, model type, group or context is validated on its own, not with the form. As with reactive forms, the controls' values are substituted into a view of the model, and the control's `errors` map error keys to `ValidationError`s. When a form or field input changes, such as `validationGroup`, the fields re-validate. Async rules are debounced by 300 ms.

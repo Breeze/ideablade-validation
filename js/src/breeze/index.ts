@@ -27,7 +27,12 @@ import type { EntityInfo, ValidationContext, ValidationContextBase, ValidatorFun
 import { createEntityStore } from '../core/entity-store.js';
 import type { RuleSource, ValidatorMetadata } from '../core/metadata.js';
 import { ValidationError, getPath } from '../core/validation-error.js';
-import type { ModelTypeResolver, NotifyingEntityStore, StoreResolver, ValidationOptions, ValidationService } from '../core/validation-service.js';
+import type {
+  ModelTypeResolver,
+  NotifyingEntityStore,
+  ValidationOptions,
+  ValidationService,
+} from '../core/validation-service.js';
 import { type Validator, ValidatorBase, type ValidatorFactory } from '../core/validator.js';
 
 /** True for Breeze entities (objects with an entityAspect). */
@@ -52,16 +57,6 @@ function liveEntities(manager: EntityManager, entityTypes?: string | string[], s
   return manager.getEntities(entityTypes, states.filter((st) => !st.isDetached())) as Entity[];
 }
 
-/**
- * Store resolver for Breeze entities: `store(type)` returns the live entities of that type in the entity's
- * EntityManager (not deleted or detached); undefined for anything else, or for an entity without a manager.
- * Register it with `storeResolvers: [breezeStoreQuery]` so that `unique` and `store(type)` work when validating a
- * single entity or a form control, not just during entity store validation.
- */
-export const breezeStoreQuery: StoreResolver = (model) => {
-  const manager = isBreezeEntity(model) ? model.entityAspect.entityManager : undefined;
-  return manager ? (entityType) => liveEntities(manager, entityType) : undefined;
-};
 
 /** A Breeze data or navigation property: both carry validators and a display name. */
 type BreezeProperty = { readonly name: string; readonly validators: BreezeValidator[]; readonly displayName?: string };
@@ -180,9 +175,9 @@ export function breezeRuleSource(metadataStore: MetadataStore | (() => MetadataS
  * `validateModelSync` runs Breeze's sync validators (`entityAspect.validateEntity()`). `validateModelAsync` and
  * `validate` run all of them, sync and async (`entityAspect.validateEntityAsync()`, Breeze 3), the way Breeze does on save.
  *
- * Validating a single property (`ValidationOptions.propertyName`, as the form integrations do), it runs that
- * property's sync Breeze validators on the property's value in the model it's given - a form's view of the entity
- * holds the control's value - without changing the entity's validation errors.
+ * The form integrations validate a view of the entity that holds the controls' values (`context.originalModel` is the
+ * entity). For a view, `breeze` runs each property's sync Breeze validators, and Breeze's entity-level ones, on the
+ * view's values, without changing the entity's validation errors.
  */
 export class BreezeValidationAdapter extends ValidatorBase implements Validator {
   readonly isAsync = false;
@@ -200,24 +195,35 @@ export class BreezeValidationAdapter extends ValidatorBase implements Validator 
     if (!isBreezeEntity(value) || isRunning(value)) {
       return null;
     }
+    if (isView(value, context)) {
+      return this.validateView(value, context);
+    }
     value.entityAspect.validateEntity();
     // Errors left over from an earlier async run are not this (sync) run's result.
     return mapBreezeErrors(this, value, this.getValidatorFunctionContext(value, context), (e) => !e.validator?.isAsync);
   }
 
-  validateProperty(model: unknown, propertyName: string, context?: ValidationContext): ValidationError[] | null {
-    if (!isBreezeEntity(model) || isRunning(model)) {
-      return null;
-    }
-    const property = model.entityType.getProperty(propertyName) as BreezeProperty | null;
-    if (!property) {
-      return null;
-    }
-    const value = getPath(model, propertyName);
-    const ctx = this.getValidatorFunctionContext(value, context);
+  /** Breeze's sync rules on a view's values: no Breeze call that would record errors on the entity. */
+  private validateView(view: Entity, context?: ValidationContext): ValidationError[] | null {
+    const ctx = this.getValidatorFunctionContext(view, context);
+    const entity = ctx.originalModel ?? view;
     // The framework runs the rules installBreezeValidators added itself.
-    const own = property.validators.filter((v) => !v.isAsync && !INSTALLED.has(v));
-    return checkBreezeProperty(this, property, own, value, ctx, ctx.originalModel ?? model);
+    const own = (validators: BreezeValidator[]) => validators.filter((v) => !v.isAsync && !INSTALLED.has(v));
+    const type = view.entityType as EntityType;
+    const errors: ValidationError[] = [];
+    for (const property of [...type.dataProperties, ...type.navigationProperties] as BreezeProperty[]) {
+      const value = getPath(view, property.name);
+      const propertyCtx = {
+        ...ctx,
+        propertyName: property.name,
+        displayName: ctx.metadata?.getProperty(property.name)?.displayName,
+        value,
+      } as ValidatorFunctionContext;
+      errors.push(...(checkBreezeProperty(this, property, own(property.validators), value, propertyCtx, entity) ?? []));
+    }
+    const entityContext = { entity: view } as unknown as ValidationMessageContext;
+    errors.push(...(mapPropertyErrors(this, own(type.validators).map((v) => v.validate(view, entityContext)), ctx) ?? []));
+    return errors.length ? errors : null;
   }
 
   validateAsync(value: unknown, context?: ValidationContext): Observable<ValidationError[] | null> {
@@ -225,10 +231,19 @@ export class BreezeValidationAdapter extends ValidatorBase implements Validator 
       if (!isBreezeEntity(value) || isRunning(value)) {
         return null;
       }
+      if (isView(value, context)) {
+        return this.validateView(value, context);
+      }
       await value.entityAspect.validateEntityAsync();
       return mapBreezeErrors(this, value, this.getValidatorFunctionContext(value, context), () => true);
     });
   }
+}
+
+/** A form's view of an entity (`Object.create(entity)` with the controls' values), rather than the entity itself. */
+function isView(value: Entity, context?: ValidationContext): boolean {
+  const original = context?.originalModel;
+  return original != null && original !== value;
 }
 
 /** Maps the entity's current Breeze errors that pass `include` (skipping errors of validators installed by {@link installBreezeValidators}). */
@@ -338,7 +353,7 @@ export function installBreezeValidators(
 
     const run = (entity: Entity, predicate: ValidationOptions['predicate'], async: boolean): Promise<ValidationError[]> | ValidationError[] => {
       const opts: ValidationOptions = {
-        store: breezeStoreQuery(entity) ?? (() => []),
+        store: entity.entityAspect.entityManager ? (type: string) => liveEntities(entity.entityAspect.entityManager!, type) : () => [],
         ...options.validationOptions,
         // The async Breeze validator runs only the async rules; the sync one already covers the others.
         predicate: (v, p) => notBreeze(v) && (!async || v.async) && userPredicate(v, p) && predicate!(v, p),

@@ -16,6 +16,8 @@
  */
 import * as i0 from '@angular/core';
 import {
+  ChangeDetectorRef,
+  DestroyRef,
   type EnvironmentProviders,
   InjectionToken,
   type Injector,
@@ -27,20 +29,22 @@ import {
   inject,
   input,
   makeEnvironmentProviders,
+  signal,
   untracked,
 } from '@angular/core';
-import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import {
   type AbstractControl,
   type AsyncValidator,
   type AsyncValidatorFn,
+  type FormGroup,
   NG_ASYNC_VALIDATORS,
   NG_VALIDATORS,
   type ValidationErrors,
   type Validator,
   type ValidatorFn,
 } from '@angular/forms';
-import { type Observable, Subject, filter, map, of, switchMap, timer } from 'rxjs';
+import { type Observable, type Subscription, filter, map, of, switchMap, timer } from 'rxjs';
 
 import type { EntityInfo, GlobalValidationContext, StoreQuery, ValidatorContextProvider } from '../core/context.js';
 import { createEntityStore } from '../core/entity-store.js';
@@ -49,8 +53,8 @@ import { type RuleSource, ValidationMetadata } from '../core/metadata.js';
 import type { ValidationError } from '../core/validation-error.js';
 import {
   type ModelTypeResolver,
-  type StoreResolver,
   type ModelValidationState,
+  type EntityStore,
   type NotifyingEntityStore,
   type ValidationOptions,
   ValidationService,
@@ -74,7 +78,7 @@ export const VALIDATION_MODEL_TYPE_RESOLVER = new InjectionToken<ModelTypeResolv
 /** Rule sources, consulted for `from` references (multi). */
 export const VALIDATION_RULE_SOURCE = new InjectionToken<RuleSource[]>('IdeaBlade.ValidationRuleSource');
 /** Store resolvers (multi; the first that returns a lookup wins). */
-export const VALIDATION_STORE_RESOLVER = new InjectionToken<StoreResolver[]>('IdeaBlade.ValidationStoreResolver');
+
 /** Trusted functions/values visible to expressions (multi; objects are merged). */
 export const VALIDATION_EXPRESSION_SCOPE = new InjectionToken<Record<string, unknown>[]>('IdeaBlade.ValidationExpressionScope');
 /** Replaces the default safe expression evaluator. */
@@ -95,8 +99,7 @@ export interface ValidationConfig extends Pick<ValidationServiceOptions, 'asyncT
   expressionScope?: Record<string, unknown>;
   /** Resolve the model type of models where none is given, such as `breezeModelType`. */
   modelTypeResolvers?: ModelTypeResolver[];
-  /** Provide `store(type)` where a validation has none, such as `breezeStoreQuery`. */
-  storeResolvers?: StoreResolver[];
+
   /** Sources of property rules outside the metadata, such as `breezeRuleSource(metadataStore)`. */
   ruleSources?: RuleSource[];
   /** Replaces the default {@link SafeExpressionEvaluator}. */
@@ -127,7 +130,7 @@ export function provideValidation(config: ValidationConfig = {}): EnvironmentPro
           ...(inject(VALIDATION_SERVICE_OPTIONS, { optional: true }) ?? {}),
           contextProviders: flat(inject(VALIDATOR_CONTEXT_PROVIDER, { optional: true })),
           modelTypeResolvers: flat(inject(VALIDATION_MODEL_TYPE_RESOLVER, { optional: true })),
-          storeResolvers: flat(inject(VALIDATION_STORE_RESOLVER, { optional: true })),
+
           expressionScope: Object.assign({}, ...flat(inject(VALIDATION_EXPRESSION_SCOPE, { optional: true }))),
         }),
     },
@@ -149,9 +152,6 @@ export function provideValidation(config: ValidationConfig = {}): EnvironmentPro
   if (config.ruleSources?.length) {
     providers.push(...provideRuleSources(...config.ruleSources));
   }
-  if (config.storeResolvers?.length) {
-    providers.push(...provideStoreResolvers(...config.storeResolvers));
-  }
   if (config.expressionScope) {
     providers.push({ provide: VALIDATION_EXPRESSION_SCOPE, useValue: config.expressionScope, multi: true });
   }
@@ -162,6 +162,22 @@ export function provideValidation(config: ValidationConfig = {}): EnvironmentPro
 }
 
 /** Adds metadata maps (e.g. from a feature's routes). */
+/**
+ * Gives a route or component its own {@link ValidationService}, for the scope of its unit of work: the same metadata and
+ * options as the parent's, and its own entity store. The forms in it validate in that store: `store(type)` and
+ * `unique` see the entities, and the fields re-validate when they change. Without a store here, set it once known,
+ * with `inject(ValidationService).setEntityStore(store)`.
+ *
+ * @example
+ * { path: 'orders', component: OrdersComponent, providers: [OrdersUnitOfWork, provideValidationScope(() => inject(OrdersUnitOfWork).entityStore)] }
+ */
+export function provideValidationScope(entityStore?: () => EntityStore | undefined): Provider[] {
+  return [
+    { provide: ValidationService, useFactory: () => inject(ValidationService, { skipSelf: true }).createScope(entityStore?.()) },
+    { provide: FormValidators, useFactory: () => new FormValidators(inject(ValidationService)) },
+  ];
+}
+
 export function provideValidationMetadata(...metadata: ModelValidationMetadataLike[]): Provider[] {
   return metadata.map((m) => ({ provide: VALIDATION_METADATA, useValue: m, multi: true }));
 }
@@ -202,11 +218,6 @@ export function provideRuleSources(...sources: (RuleSource | (() => RuleSource))
       ? { provide: VALIDATION_RULE_SOURCE, useFactory: source, multi: true }
       : { provide: VALIDATION_RULE_SOURCE, useValue: source, multi: true },
   );
-}
-
-/** Registers store resolvers, such as `breezeStoreQuery`. */
-export function provideStoreResolvers(...resolvers: StoreResolver[]): Provider[] {
-  return resolvers.map((r) => ({ provide: VALIDATION_STORE_RESOLVER, useValue: r, multi: true }));
 }
 
 /** Makes trusted functions/values available to expressions. */
@@ -271,7 +282,7 @@ export function injectFormValidators(): FormValidators {
 
 const matchGroup = (group?: string): ValidatorPredicate => (v) => (!group && !v.group) || (!!group && v.group === group);
 
-function errorsToMap(errors: ValidationError[]): ValidationErrors | null {
+function errorsToMap(errors: readonly ValidationError[]): ValidationErrors | null {
   if (errors.length === 0) {
     return null;
   }
@@ -281,11 +292,154 @@ function errorsToMap(errors: ValidationError[]): ValidationErrors | null {
   }, {});
 }
 
-/** A view of `model` whose `propertyName` returns `value`; other properties (incl. accessors) come from the model. */
-function withProperty(model: unknown, propertyName: string, value: unknown): unknown {
+/** A view of `model` with the given property values; other properties (incl. accessors) come from the model. */
+function withValues(model: unknown, values: readonly (readonly [string, unknown])[]): unknown {
   const view = Object.create((model ?? {}) as object);
-  Object.defineProperty(view, propertyName, { value, enumerable: true, configurable: true, writable: true });
+  for (const [propertyName, value] of values) {
+    Object.defineProperty(view, propertyName, { value, enumerable: true, configurable: true, writable: true });
+  }
   return view;
+}
+
+function sameValues(a: readonly unknown[], b: readonly unknown[]): boolean {
+  return a.length === b.length && a.every((value, i) => Object.is(value, b[i]));
+}
+
+/** What a {@link FormModelValidation} validates: the model and its type, and the group and context to use. */
+export interface FormModelTarget {
+  info: EntityInfo;
+  group?: string;
+  context?: GlobalValidationContext;
+}
+
+/**
+ * Validates one model for all the form controls bound to it. Every control's errors come from one validation of the
+ * whole model, with each control's current value in place of its property, so:
+ *
+ * - a control shows the errors of its property's rules, and of model-level rules that name the property
+ *   (`propertyNames`), such as a "start before end" rule on both dates;
+ * - a change in one control re-validates all the others, because a value can break or fix another field's rule, or
+ *   change a condition;
+ * - a change made elsewhere re-validates them all too: a change of the service's entity store (the model changed in
+ *   code, or an entity a rule reads), or a call to {@link revalidate}. The same store gives the rules `store(type)`.
+ *
+ * Errors about the model as a whole (no `propertyNames`) are in {@link modelErrors}. The template-driven-forms
+ * directives create one per form; {@link FormValidators.validateFormGroup} creates one for a reactive form group.
+ */
+export class FormModelValidation {
+  private readonly controls = new Map<AbstractControl, { propertyName: string; subscription: Subscription }>();
+  private last?: { values: readonly unknown[]; errors: ValidationError[] };
+  private refreshing = false;
+  private storeChanges?: Subscription;
+  private readonly state = signal<readonly ValidationError[]>([]);
+
+  /** All errors of the latest validation. */
+  readonly errors: Signal<readonly ValidationError[]> = this.state.asReadonly();
+  /** Errors about the model as a whole: model-level rules that name no properties. */
+  readonly modelErrors: Signal<readonly ValidationError[]> = computed(() => this.state().filter((e) => e.propertyNames.length === 0));
+
+  constructor(
+    private readonly validationService: ValidationService,
+    private readonly target: () => FormModelTarget | null,
+    private readonly onRefresh?: () => void,
+  ) {}
+
+  /** Adds a control bound to `propertyName`; its value takes the property's place in the validation. */
+  register(control: AbstractControl, propertyName: string): void {
+    const entry = this.controls.get(control);
+    if (entry) {
+      if (entry.propertyName !== propertyName) {
+        entry.propertyName = propertyName;
+        this.last = undefined;
+      }
+      return;
+    }
+    const subscription = control.valueChanges.subscribe(() => this.refresh(control));
+    this.controls.set(control, { propertyName, subscription });
+    this.last = undefined;
+  }
+
+  unregister(control: AbstractControl): void {
+    this.controls.get(control)?.subscription.unsubscribe();
+    if (this.controls.delete(control)) {
+      this.last = undefined;
+    }
+  }
+
+  /** The errors for a control, as Angular wants them: keyed by error key. Registers the control. */
+  errorsFor(control: AbstractControl, propertyName: string): ValidationErrors | null {
+    this.register(control, propertyName);
+    return errorsToMap(this.validate(control).filter((e) => e.isFor(propertyName)));
+  }
+
+  /**
+   * Validates the model with the controls' current values (once per change of the model or a value). When several
+   * controls edit the same property, `control`'s value is the one used.
+   */
+  validate(control?: AbstractControl): ValidationError[] {
+    const target = this.target();
+    if (!target || target.info.entity == null) {
+      return [];
+    }
+    const { info, group, context } = target;
+    this.watch();
+    const ordered = [...this.controls.entries()];
+    const own = control ? ordered.findIndex(([c]) => c === control) : -1;
+    if (own >= 0) {
+      ordered.push(...ordered.splice(own, 1));
+    }
+    const entries = ordered.map(([c, { propertyName }]) => [propertyName, c.value] as const);
+    const values = [info.entity, info.entityType, group, context, ...entries.flat()];
+    if (this.last && sameValues(this.last.values, values)) {
+      return this.last.errors;
+    }
+    const errors = this.validationService.validateModelSync(withValues(info.entity, entries), info.entityType, {
+      predicate: matchGroup(group),
+      context: { ...context, originalModel: info.entity },
+    });
+    this.last = { values, errors };
+    untracked(() => this.state.set(errors));
+    return errors;
+  }
+
+  /** Re-validates every control, e.g. after the model changed in a way nothing reported. */
+  revalidate(): void {
+    this.last = undefined;
+    this.validate();
+    this.refresh();
+  }
+
+  /** Stops watching the model and releases the controls. */
+  dispose(): void {
+    for (const control of [...this.controls.keys()]) {
+      this.unregister(control);
+    }
+    this.storeChanges?.unsubscribe();
+    this.storeChanges = undefined;
+  }
+
+  /** Updates every control except the one that just changed (it has already validated). */
+  private refresh(except?: AbstractControl): void {
+    if (this.refreshing) {
+      return;
+    }
+    this.refreshing = true;
+    try {
+      for (const control of this.controls.keys()) {
+        if (control !== except) {
+          control.updateValueAndValidity();
+        }
+      }
+    } finally {
+      this.refreshing = false;
+    }
+    this.onRefresh?.();
+  }
+
+  /** Re-validates when the service's entity store changes. */
+  private watch(): void {
+    this.storeChanges ??= this.validationService.entityStoreChanged$.subscribe(() => this.revalidate());
+  }
 }
 
 /**
@@ -294,6 +448,24 @@ function withProperty(model: unknown, propertyName: string, value: unknown): unk
  */
 export class FormValidators {
   constructor(private readonly validationService: ValidationService) {}
+
+  /**
+   * Validates a reactive form group against a model, all controls together, as the template-driven-forms directives
+   * do: each control's errors come from validating the model with all the group's current values, so a rule spanning
+   * properties updates every field it names, and a change in one control re-validates the others. Control names are
+   * property names. Returns the {@link FormModelValidation} (model-level errors, `revalidate`, `dispose`).
+   */
+  validateFormGroup(formGroup: FormGroup, modelInfoFn: () => EntityInfo, group?: string, context?: GlobalValidationContext): FormModelValidation {
+    const validation = new FormModelValidation(this.validationService, () => ({ info: modelInfoFn(), group, context }));
+    for (const [propertyName, control] of Object.entries(formGroup.controls)) {
+      validation.register(control, propertyName);
+      control.addValidators((c) => validation.errorsFor(c, propertyName));
+    }
+    for (const control of Object.values(formGroup.controls)) {
+      control.updateValueAndValidity();
+    }
+    return validation;
+  }
 
   /** `[value, syncValidators, asyncValidators]` tuple for `FormBuilder.group`. */
   formControl(value: unknown, modelInfoFn: () => EntityInfo, propertyName: string, group?: string, context?: GlobalValidationContext): [unknown, ValidatorFn[], AsyncValidatorFn[]] {
@@ -305,24 +477,23 @@ export class FormValidators {
   }
 
   /**
-   * Sync ValidatorFn for a property: validates the model with the control's value substituted. The property's rules
-   * run, and so do model-level validators that can check a single property, such as `breeze` for Breeze's own rules.
+   * Sync ValidatorFn for one control: validates the whole model with the control's value in place of the property,
+   * and reports the errors about the property, model-level rules naming it included. For a group of controls that
+   * depend on each other, use {@link validateFormGroup}.
    */
   createSyncValidatorFn(modelInfoFn: () => EntityInfo, propertyName: string, group?: string, context?: GlobalValidationContext): ValidatorFn {
     const predicate = matchGroup(group);
     return (control: AbstractControl): ValidationErrors | null => {
       const { entity, entityType } = modelInfoFn();
-      const errors = this.validationService
-        .validateModelSync(withProperty(entity, propertyName, control.value), entityType, {
-          propertyName,
-          predicate,
-          context: { ...context, originalModel: entity },
-        });
-      return errorsToMap(errors);
+      const errors = this.validationService.validateModelSync(withValues(entity, [[propertyName, control.value]]), entityType, {
+        predicate,
+        context: { ...context, originalModel: entity },
+      });
+      return errorsToMap(errors.filter((e) => e.isFor(propertyName)));
     };
   }
 
-  /** Async ValidatorFn for a property (debounced). Returns null immediately when the property has no async validators. */
+  /** Async ValidatorFn for a property (debounced): the async rules about the property. Returns null at once when there are none. */
   createAsyncValidatorFn(
     modelInfoFn: () => EntityInfo,
     propertyName: string,
@@ -331,21 +502,23 @@ export class FormValidators {
     debounceMs = 300,
   ): AsyncValidatorFn {
     const predicate = matchGroup(group);
+    // Only the async rules about the property: its own, and model-level ones that name it. Angular runs the sync ones
+    // through the sync validator.
+    const asyncRules: ValidatorPredicate = (v, p) =>
+      v.async && predicate(v, p) && (p ? p.propertyName === propertyName : !!v.propertyNames?.includes(propertyName));
     return (control: AbstractControl): Observable<ValidationErrors | null> => {
       const { entity, entityType } = modelInfoFn();
-      const property = this.validationService.validationMetadata.getModelMetadata(entityType).getProperty(propertyName);
-      if (!property?.validators.some((v) => v.async && predicate(v, property))) {
+      if (!this.validationService.hasAsyncValidators(entityType, asyncRules)) {
         return of(null);
       }
       return timer(debounceMs).pipe(
         switchMap(() =>
-          this.validationService.validateModelAsync(withProperty(entity, propertyName, control.value), entityType, {
-            // Only the async rules: Angular runs the sync ones through createSyncValidatorFn.
-            predicate: (v, p) => v.async && !!p && p.propertyName === propertyName && predicate(v, p),
+          this.validationService.validateModelAsync(withValues(entity, [[propertyName, control.value]]), entityType, {
+            predicate: asyncRules,
             context: { ...context, originalModel: entity },
           }),
         ),
-        map(errorsToMap),
+        map((errors) => errorsToMap(errors.filter((e) => e.isFor(propertyName)))),
       );
     };
   }
@@ -363,11 +536,13 @@ export class FormValidators {
 
 /**
  * Sets the model, model type, group and context for every `ngModel` in a template-driven form, so the fields
- * don't have to repeat them:
+ * don't have to repeat them, and validates the model once for all of them ({@link FormModelValidation}): a change in
+ * one field re-validates the others. Any element with `ngForm` can be one, such as one card of a list.
  *
  * ```html
- * <form [validationModel]="customer" validationModelType="Customer">
+ * <form [validationModel]="customer" #form="validationForm">
  *   <input name="email" [(ngModel)]="customer.email" #email="ngModel" />
+ *   @for (e of form.modelErrors(); track e.key) { <small>{{ e.errorMessage }}</small> }
  * </form>
  * ```
  */
@@ -381,11 +556,31 @@ export class ValidationFormDirective implements OnChanges {
   /** Extra context passed to the validators. */
   readonly validationContext = input<GlobalValidationContext>();
 
-  /** @internal Emits when an input changes, so the fields re-validate. */
-  readonly changes = new Subject<void>();
+  private readonly validationService = inject(ValidationService);
+  private readonly changeDetector = inject(ChangeDetectorRef);
+
+  /** The form's validation: all its errors, the model-level ones, and `revalidate()`. */
+  readonly validation = new FormModelValidation(
+    this.validationService,
+    () => targetOf(this.validationService, this.validationModel(), this.validationModelType(), this.validationGroup(), this.validationContext()),
+    () => this.changeDetector.markForCheck(),
+  );
+  /** All errors of the latest validation. */
+  readonly errors = this.validation.errors;
+  /** Errors about the model as a whole: model-level rules that name no properties. */
+  readonly modelErrors = this.validation.modelErrors;
+
+  constructor() {
+    inject(DestroyRef).onDestroy(() => this.validation.dispose());
+  }
 
   ngOnChanges(): void {
-    this.changes.next();
+    this.validation.revalidate();
+  }
+
+  /** Re-validates every field, e.g. after the model changed in a way nothing reported. */
+  revalidate(): void {
+    this.validation.revalidate();
   }
 
   static ɵfac: i0.ɵɵFactoryDeclaration<ValidationFormDirective, never> = i0.ɵɵngDeclareFactory({
@@ -400,7 +595,7 @@ export class ValidationFormDirective implements OnChanges {
   static ɵdir: i0.ɵɵDirectiveDeclaration<
     ValidationFormDirective,
     'form:not([ngNoForm]),ng-form,[ngForm]',
-    never,
+    ['validationForm'],
     {
       validationModel: { alias: 'validationModel'; required: false; isSignal: true };
       validationModelType: { alias: 'validationModelType'; required: false; isSignal: true };
@@ -424,18 +619,39 @@ export class ValidationFormDirective implements OnChanges {
       validationGroup: { classPropertyName: 'validationGroup', publicName: 'validationGroup', isSignal: true, isRequired: false, transformFunction: null },
       validationContext: { classPropertyName: 'validationContext', publicName: 'validationContext', isSignal: true, isRequired: false, transformFunction: null },
     },
+    exportAs: ['validationForm'],
     usesOnChanges: true,
     ngImport: i0,
   } as never) as never;
 }
 
+/** The target of a form or field, with the model type from the inputs or the model type resolvers. */
+function targetOf(
+  service: ValidationService,
+  model: unknown,
+  modelType: string | undefined,
+  group: string | undefined,
+  context: GlobalValidationContext | undefined,
+): FormModelTarget | null {
+  if (model == null) {
+    return null;
+  }
+  const entityType = modelType ?? service.resolveModelType(model);
+  if (!entityType) {
+    throw new Error('Cannot validate the form: set validationModelType, or register a model type resolver that recognizes the model.');
+  }
+  return { info: { entity: model, entityType }, group, context };
+}
+
 /**
- * Validates an `ngModel` with the metadata rules of its model's property: sync rules as an Angular validator, async
- * rules as an async validator. It applies to every `[ngModel]` once imported, and does nothing until a model is known.
+ * Validates an `ngModel` with the metadata rules: sync rules as an Angular validator, async rules as an async
+ * validator. It applies to every `[ngModel]` once imported, and does nothing until a model is known.
  *
- * - The model, model type, group and context come from the field's inputs or from the enclosing
- *   {@link ValidationFormDirective}.
+ * - The model, model type, group and context come from the enclosing {@link ValidationFormDirective}. A field that
+ *   sets any of them itself is validated on its own.
  * - The property defaults to the control's `name`; set `validationPropertyName` when they differ.
+ * - The control's errors are those about its property: its rules, and model-level rules that name it
+ *   (`propertyNames`). They are re-checked whenever another field of the form changes.
  *
  * The control's `errors` map error keys to {@link ValidationError}s:
  *
@@ -462,54 +678,80 @@ export class ValidationFieldDirective implements Validator, OnChanges {
   private readonly validationService = inject(ValidationService);
   private readonly form = inject(ValidationFormDirective, { optional: true });
   private onValidatorChange?: () => void;
+  private control?: AbstractControl;
+  private own?: FormModelValidation;
+  private registeredWith?: FormModelValidation;
 
   /** The async half, registered as `NG_ASYNC_VALIDATORS`. */
   readonly asyncValidator: AsyncValidator = {
     validate: (control) => {
       const target = this.target();
-      return target
-        ? this.formValidators.createAsyncValidatorFn(() => target.info, target.propertyName, target.group, target.context)(control)
+      const propertyName = this.propertyName();
+      return target && propertyName
+        ? this.formValidators.createAsyncValidatorFn(() => target.info, propertyName, target.group, target.context)(control)
         : of(null);
     },
   };
 
   constructor() {
-    this.form?.changes.pipe(takeUntilDestroyed()).subscribe(() => this.onValidatorChange?.());
+    inject(DestroyRef).onDestroy(() => {
+      if (this.control) {
+        this.registeredWith?.unregister(this.control);
+      }
+      this.own?.dispose();
+    });
   }
 
   ngOnChanges(changes: SimpleChanges): void {
     if (Object.values(changes).some((c) => !c.firstChange)) {
+      this.own?.revalidate();
       this.onValidatorChange?.();
     }
   }
 
   validate(control: AbstractControl): ValidationErrors | null {
-    const target = this.target();
-    return target
-      ? this.formValidators.createSyncValidatorFn(() => target.info, target.propertyName, target.group, target.context)(control)
-      : null;
+    this.control = control;
+    const validation = this.validation();
+    const propertyName = this.propertyName();
+    if (validation !== this.registeredWith) {
+      this.registeredWith?.unregister(control);
+      this.registeredWith = validation;
+    }
+    return validation && propertyName ? validation.errorsFor(control, propertyName) : null;
   }
 
   registerOnValidatorChange(fn: () => void): void {
     this.onValidatorChange = fn;
   }
 
-  private target(): { info: EntityInfo; propertyName: string; group?: string; context?: GlobalValidationContext } | null {
-    const model = this.validationModel() ?? this.form?.validationModel();
-    const propertyName = this.validationPropertyName() ?? this.name();
-    if (model == null || !propertyName) {
-      return null;
+  private propertyName(): string | undefined {
+    return this.validationPropertyName() ?? this.name();
+  }
+
+  /** The form's validation, or the field's own when it sets its model, type, group or context itself, or has no form. */
+  private validation(): FormModelValidation | undefined {
+    if (!this.propertyName()) {
+      return undefined;
     }
-    const entityType = this.validationModelType() ?? this.validationService.resolveModelType(model) ?? this.form?.validationModelType();
-    if (!entityType) {
-      throw new Error(`Cannot validate '${propertyName}': set validationModelType on the field or the form, or register a model type resolver that recognizes the model.`);
+    const ownSettings =
+      this.validationModel() !== undefined ||
+      this.validationModelType() !== undefined ||
+      this.validationGroup() !== undefined ||
+      this.validationContext() !== undefined;
+    if (this.form && !ownSettings) {
+      return this.form.validation;
     }
-    return {
-      info: { entity: model, entityType },
-      propertyName,
-      group: this.validationGroup() ?? this.form?.validationGroup(),
-      context: this.validationContext() ?? this.form?.validationContext(),
-    };
+    return (this.own ??= new FormModelValidation(this.validationService, () => this.target()));
+  }
+
+  private target(): FormModelTarget | null {
+    return targetOf(
+      this.validationService,
+      this.validationModel() ?? this.form?.validationModel(),
+      this.validationModelType() ?? (this.validationModel() !== undefined ? undefined : this.form?.validationModelType()),
+      this.validationGroup() ?? this.form?.validationGroup(),
+      this.validationContext() ?? this.form?.validationContext(),
+    );
   }
 
   static ɵfac: i0.ɵɵFactoryDeclaration<ValidationFieldDirective, never> = i0.ɵɵngDeclareFactory({

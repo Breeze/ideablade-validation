@@ -41,8 +41,22 @@ export class ValidationError {
     return this.validator.metadata?.id ?? this.key;
   }
 
-  get propertyName(): string | undefined {
-    return this.context.propertyName;
+  /**
+   * The properties the error is about. For a property rule, the property. For a model-level rule, the properties it
+   * names (`propertyNames` in the metadata, or set by the validator), such as both dates of a "start before end"
+   * rule; empty when it is about the model as a whole.
+   */
+  get propertyNames(): readonly string[] {
+    const names = this.context.propertyNames;
+    if (names?.length) {
+      return names;
+    }
+    return this.context.propertyName ? [this.context.propertyName] : [];
+  }
+
+  /** True when the error is about `propertyName` (one of its {@link propertyNames}). */
+  isFor(propertyName: string): boolean {
+    return this.propertyNames.includes(propertyName);
   }
 
   get model(): unknown {

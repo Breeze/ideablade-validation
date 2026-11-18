@@ -98,7 +98,7 @@ describe('validateWithMetadata (Signal Forms) with from + breezeRuleSource', () 
     const { nameForm } = createForm();
     const [error] = nameForm.firstName().errors() as unknown as MetadataFormError[];
     expect(error.kind).toBe('required_firstName');
-    expect(error.validationError.propertyName).toBe('firstName');
+    expect(error.validationError.propertyNames).toEqual(['firstName']);
   });
 
   it('runs async rules, metadata and Breeze, once the sync rules pass', async () => {

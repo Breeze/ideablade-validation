@@ -28,7 +28,7 @@ Non-entities are ignored.
 
 ### On form fields
 
-Breeze's rules belong to properties, but `breeze` is a model-level validator. When a single property is validated, as the form integrations do for each control (`ValidationOptions.propertyName`), `breeze` checks that property alone: it runs the property's Breeze validators on the value being validated, which in a form is the control's value. It doesn't change the entity's Breeze errors. So a field bound to `customer.name` shows Breeze's `maxLength` next to the metadata's own rules for `name`, all as `ValidationError`s:
+A form validates a view of the entity that holds the fields' values. On such a view, `breeze` runs every property's Breeze validators, and Breeze's entity-level ones, on the view's values, without changing the entity's Breeze errors. Its errors are `ValidationError`s about their property, so a field bound to `customer.name` shows Breeze's `maxLength` next to the metadata's own rules for `name`:
 
 ```html
 <form [validationModel]="customer">
@@ -116,22 +116,15 @@ createValidationService({ metadata, validators: [breezeValidator], modelTypeReso
 // Angular: provideValidation({ metadata, validators: [breezeValidator], modelTypeResolvers: [breezeModelType] })
 ```
 
-## `store(type)` for single entities and forms (`breezeStoreQuery`)
+## Single entities and forms: the manager as the entity store
 
-`store(type)` in expressions, and the `unique` validator that depends on it, need to see an entity's siblings. Entity store validation and the installed Breeze validators supply them. Validating a single entity (`validateModelSync`) or a form control doesn't, so `unique` would pass there without checking anything.
-
-`breezeStoreQuery` is a [store resolver](concepts.md#resolvers) that fills that gap. For a Breeze entity, `store(type)` returns the live entities of that type in the entity's own `EntityManager`, without deleted or detached ones. A form control's view of the entity resolves the same way.
+`store(type)` in expressions, and the `unique` validator that depends on it, need to see an entity's siblings. Give the validation service of the scope its `EntityManager` as its [entity store](concepts.md#scopes-a-service-and-its-entity-store): single entities and forms validated by that service then see the manager's live entities (without deleted or detached ones), and the forms re-validate when anything in the manager changes.
 
 ```ts
-provideValidation({
-  metadata,
-  validators: [breezeValidator],
-  modelTypeResolvers: [breezeModelType],
-  storeResolvers: [breezeStoreQuery],
-});
+const scoped = service.createScope(breezeEntityStore(unitOfWork.manager));
+// Angular, in a route's or component's providers:
+provideValidationScope(() => breezeEntityStore(inject(UnitOfWork).manager));
 ```
-
-An explicit `options.store`, and the store of entity store validation, still take precedence.
 
 ## Rules for view models (`breezeRuleSource`)
 

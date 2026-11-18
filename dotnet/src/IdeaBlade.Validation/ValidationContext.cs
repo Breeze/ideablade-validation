@@ -51,7 +51,13 @@ namespace IdeaBlade.Validation
 
         public object? Model { get => GetValue(nameof(Model)); set => SetValue(nameof(Model), value); }
         public string? ModelType { get => GetValue<string>(nameof(ModelType)) ?? Model?.GetType().Name; set => SetValue(nameof(ModelType), value); }
+        /// <summary>The property being validated, for a property validator.</summary>
         public string? PropertyName { get => GetValue<string>(nameof(PropertyName)); set => SetValue(nameof(PropertyName), value); }
+        /// <summary>
+        /// For a model-level validator: the properties its errors are about. Set from the metadata (<c>propertyNames</c>),
+        /// or by the validator itself. See <see cref="ValidationError.PropertyNames"/>.
+        /// </summary>
+        public IReadOnlyList<string>? PropertyNames { get => GetValue(nameof(PropertyNames)) as IReadOnlyList<string>; set => SetValue(nameof(PropertyNames), value); }
         public ModelMetadata? Metadata { get => GetValue(nameof(Metadata)) as ModelMetadata; set => SetValue(nameof(Metadata), value); }
         public bool IsClient { get => GetValue<bool>(nameof(IsClient)); set => SetValue(nameof(IsClient), value); }
         public bool IsServer { get => GetValue<bool>(nameof(IsServer)); set => SetValue(nameof(IsServer), value); }

@@ -93,7 +93,7 @@ namespace IdeaBlade.Validation
             var errors = new List<ValidationError>();
             foreach (var item in Plan(false, model, modelType, options))
             {
-                errors.AddRange(((Validator)item.Validator).ValidateAll(item.Value, item.Context));
+                errors.AddRange(((Validator)item.Validator).Validate(item.Value, item.Context));
             }
             ModelValidated?.Invoke(this, new ModelValidatedEventArgs(model, modelType, errors));
             return errors;
@@ -111,7 +111,7 @@ namespace IdeaBlade.Validation
             var errors = new List<ValidationError>();
             foreach (var item in Plan(false, model, modelType, options))
             {
-                errors.AddRange(((Validator)item.Validator).ValidateAll(item.Value, item.Context));
+                errors.AddRange(((Validator)item.Validator).Validate(item.Value, item.Context));
             }
 
             var asyncItems = Plan(true, model, modelType, options).ToList();
@@ -136,7 +136,7 @@ namespace IdeaBlade.Validation
                         cts.Cancel(); // stop the delay
                     }
                     var results = await all.ConfigureAwait(false);
-                    errors.AddRange(results.Where(e => e != null).Select(e => e!));
+                    errors.AddRange(results.SelectMany(e => e));
                 }
             }
             ModelValidated?.Invoke(this, new ModelValidatedEventArgs(model, modelType, errors));
@@ -241,6 +241,10 @@ namespace IdeaBlade.Validation
                 {
                     ctx.PropertyName = property.PropertyName;
                     ctx.DisplayName = property.DisplayName;
+                }
+                else if (validator.PropertyNames is { Count: > 0 } propertyNames)
+                {
+                    ctx.PropertyNames = propertyNames.ToList();
                 }
                 foreach (var kvp in validator.Context) ctx[kvp.Key] = kvp.Value;
                 return ctx;

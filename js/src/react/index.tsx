@@ -33,6 +33,19 @@ export function ValidationProvider(props: ValidationProviderProps) {
   return <ValidationServiceContext.Provider value={given ?? created}>{children}</ValidationServiceContext.Provider>;
 }
 
+/**
+ * A {@link ValidationService} for the scope of a unit of work: the nearest provider's metadata and options, and its own
+ * entity store. Provide it to the components of that scope:
+ *
+ * @example
+ * const scoped = useValidationScope(store);
+ * return <ValidationProvider service={scoped}>...</ValidationProvider>;
+ */
+export function useValidationScope(entityStore: EntityStore | undefined): ValidationService {
+  const parent = useValidationService();
+  return useMemo(() => parent.createScope(entityStore), [parent, entityStore]);
+}
+
 /** Returns the {@link ValidationService} from the nearest {@link ValidationProvider}. */
 export function useValidationService(): ValidationService {
   const service = useContext(ValidationServiceContext);
@@ -60,7 +73,10 @@ export interface UseValidationResult {
   isValid: boolean;
   /** True while async validators are running. */
   pending: boolean;
-  /** Errors for one property (model-level errors when called without a name). */
+  /**
+   * Errors about one property: its rules, and model-level rules that name it (`propertyNames`). Without a name, the
+   * errors about the model as a whole (model-level rules that name no properties).
+   */
   errorsFor(propertyName?: string): ValidationError[];
   /** Messages for one property, convenient for rendering. */
   messagesFor(propertyName?: string): string[];
@@ -71,8 +87,10 @@ export interface UseValidationResult {
 const EMPTY: ValidationError[] = [];
 
 /**
- * Validates a model with the metadata rules. Sync errors are computed during render; async errors
- * arrive later (`pending` is true meanwhile). Re-validates when `model`, `modelType` or `options.deps` change.
+ * Validates a model with the metadata rules, the whole model at once, so a field's errors include model-level rules
+ * that name it and update whenever any value changes. Sync errors are computed during render; async errors arrive later
+ * (`pending` is true meanwhile). Re-validates when `model`, `modelType` or `options.deps` change, and when the
+ * service's entity store changes (`ValidationProvider`'s `entityStore`).
  */
 export function useValidation(model: unknown, modelType: string, options: UseValidationOptions = {}): UseValidationResult {
   const service = useValidationService();
@@ -81,6 +99,12 @@ export function useValidation(model: unknown, modelType: string, options: UseVal
   const [version, setVersion] = useState(0);
   const revalidate = useCallback(() => setVersion((v) => v + 1), []);
   const deps = [service, model, modelType, version, options.disabled, ...(options.deps ?? [])];
+
+  // Changes made outside the component, such as an entity changed in place: the service's entity store reports them.
+  useEffect(() => {
+    const subscription = service.entityStoreChanged$.subscribe(revalidate);
+    return () => subscription.unsubscribe();
+  }, [service, revalidate]);
 
   const syncErrors = useMemo(
     () => (options.disabled || model == null ? EMPTY : service.validateModelSync(model, modelType, optionsRef.current)),
@@ -109,7 +133,8 @@ export function useValidation(model: unknown, modelType: string, options: UseVal
   const errors = runAsync && !pending ? asyncState.errors : syncErrors;
 
   return useMemo(() => {
-    const errorsFor = (propertyName?: string) => errors.filter((e) => e.propertyName === propertyName);
+    const errorsFor = (propertyName?: string) =>
+      errors.filter((e) => (propertyName === undefined ? e.propertyNames.length === 0 : e.isFor(propertyName)));
     return {
       errors,
       isValid: errors.length === 0 && !pending,

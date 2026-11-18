@@ -29,6 +29,11 @@ namespace IdeaBlade.Validation.Metadata
         public bool Async { get; set; }
         /// <summary>Expression; the validator only runs when it evaluates truthy.</summary>
         public string? Condition { get; set; }
+        /// <summary>
+        /// For a model-level validator: the properties its errors are about, such as <c>["startDate", "endDate"]</c>
+        /// for a rule that compares them (<see cref="ValidationError.PropertyNames"/>).
+        /// </summary>
+        public IList<string>? PropertyNames { get; set; }
 
         public static implicit operator ValidatorConfig(string name) => new ValidatorConfig(name);
     }
@@ -200,6 +205,8 @@ namespace IdeaBlade.Validation.Metadata
             if (el.TryGetProperty("id", out var id)) config.Id = id.GetString();
             if (el.TryGetProperty("async", out var async)) config.Async = async.ValueKind == JsonValueKind.True;
             if (el.TryGetProperty("condition", out var condition)) config.Condition = condition.GetString();
+            if (el.TryGetProperty("propertyNames", out var propertyNames) && propertyNames.ValueKind == JsonValueKind.Array)
+                config.PropertyNames = propertyNames.EnumerateArray().Select(n => n.GetString()!).ToList();
             if (el.TryGetProperty("context", out var context) && context.ValueKind == JsonValueKind.Object)
                 config.Context = (Dictionary<string, object?>)JsRuntime.FromJson(context)!;
             return config;

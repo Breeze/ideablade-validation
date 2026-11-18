@@ -30,7 +30,7 @@ namespace IdeaBlade.Validation.Validators
         public static ValidatorFactory Factory(string name = "dataAnnotations") =>
             new ValidatorFactory(name, (group, context) => new DataAnnotationsValidator(name, group, context));
 
-        public override IReadOnlyList<ValidationError> ValidateAll(object? value, ValidationContext? context = null)
+        public override IReadOnlyList<ValidationError> Validate(object? value, ValidationContext? context = null)
         {
             if (value == null) return Array.Empty<ValidationError>();
             var errors = new List<ValidationError>();
@@ -70,7 +70,7 @@ namespace IdeaBlade.Validation.Validators
             return errors;
         }
 
-        protected override bool ValidateCore(object? value, ValidatorFunctionContext context) => ValidateAll(value, context).Count == 0;
+        protected override bool ValidateCore(object? value, ValidatorFunctionContext context) => Validate(value, context).Count == 0;
 
         private ValidationError Error(string name, string? propertyName, object? value, string? message, ValidationContext? context)
         {

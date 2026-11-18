@@ -2,7 +2,7 @@ import { DataProperty, DataType, EntityManager, EntityState, EntityType, Metadat
 import { filter, firstValueFrom, skip, toArray } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 
-import { breezeEntityStore, breezeModelType, breezeRuleSource, breezeStoreQuery, breezeValidator, installBreezeValidators } from '../src/breeze/index.js';
+import { breezeEntityStore, breezeModelType, breezeRuleSource, breezeValidator, installBreezeValidators } from '../src/breeze/index.js';
 import { asyncValidator, createValidationService } from '../src/index.js';
 
 function makeManager(): EntityManager {
@@ -35,7 +35,7 @@ describe('breezeValidator (Breeze → framework)', () => {
     const c = manager.createEntity('Customer', { id: 1, name: 'Too long name', email: 'a@b.co' }) as Customer;
     const errors = service.validateModelSync(c, 'Customer');
     expect(errors).toHaveLength(1);
-    expect(errors[0].propertyName).toBe('name');
+    expect(errors[0].propertyNames).toEqual(['name']);
     expect(errors[0].errorMessage).toMatch(/5/);
   });
 });
@@ -113,27 +113,18 @@ describe('breezeRuleSource', () => {
   });
 });
 
-describe('breezeStoreQuery', () => {
+describe('a single entity, with the breezeEntityStore of its manager as the entity store', () => {
   const uniqueEmail = { Customer: { properties: { email: { displayName: 'E-mail', validators: ['unique'] } } } };
 
-  it('lets unique see the live entities in the manager of the entity, without deleted ones', () => {
+  it('lets unique see the live entities in the manager, without deleted ones', () => {
     const manager = makeManager();
-    const service = createValidationService({ metadata: uniqueEmail, storeResolvers: [breezeStoreQuery] });
+    const service = createValidationService({ metadata: uniqueEmail, entityStore: breezeEntityStore(manager) });
     const c1 = manager.createEntity('Customer', { id: 1, email: 'a@b.co' }, EntityState.Unchanged) as Customer;
     const c2 = manager.createEntity('Customer', { id: 2, email: 'a@b.co' }, EntityState.Unchanged) as Customer;
     expect(service.validateModelSync(c1, 'Customer').map((e) => e.errorMessage)).toEqual(['E-mail must be unique']);
 
     c2.entityAspect.setDeleted();
     expect(service.validateModelSync(c1, 'Customer')).toEqual([]);
-  });
-
-  it('returns undefined for plain objects and detached entities', () => {
-    const manager = makeManager();
-    const c = manager.createEntity('Customer', { id: 1 }) as Customer;
-    expect(breezeStoreQuery(c)).toBeTypeOf('function');
-    expect(breezeStoreQuery({ email: 'x' })).toBeUndefined();
-    manager.detachEntity(c);
-    expect(breezeStoreQuery(c)).toBeUndefined();
   });
 
   it('installBreezeValidators ignores deleted entities for unique too', () => {
@@ -181,7 +172,7 @@ describe('breeze validator with Breeze 3 async validators', () => {
     expect(service.validateModelSync(c, 'Customer').map((e) => e.key)).toEqual(['maxLength:name']);
 
     const all = await firstValueFrom(service.validateModelAsync(c, 'Customer'));
-    expect(all.map((e) => [e.key, e.propertyName, e.errorMessage])).toEqual([
+    expect(all.map((e) => [e.key, e.propertyNames[0], e.errorMessage])).toEqual([
       ['maxLength:name', 'name', "'name' must be a string with 5 characters or less"],
       ['loginTaken:email', 'email', 'email is already taken'],
     ]);

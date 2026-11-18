@@ -27,6 +27,8 @@ namespace IdeaBlade.Validation.Metadata
         public string? Group { get; }
         public bool IsAsync => Config.Async;
         public string? Condition => Config.Condition;
+        /// <summary>For a model-level validator: the properties its errors are about (<c>propertyNames</c> in the metadata).</summary>
+        public IList<string>? PropertyNames => Config.PropertyNames;
 
         /// <summary>The configured validator context (from the metadata).</summary>
         public ValidationContextBase Context => _context ?? (_context = new ValidationContextBase(Config.Context));

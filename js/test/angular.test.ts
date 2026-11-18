@@ -16,7 +16,7 @@ import {
   provideValidatorFactory,
   validationErrors,
 } from '../src/angular/index.js';
-import { asyncValidator, syncValidator } from '../src/index.js';
+import { asyncValidator, createEntityStore, syncValidator } from '../src/index.js';
 
 
 class TenantService {
@@ -78,16 +78,15 @@ describe('Angular providers', () => {
     expect(errors()).toEqual([]);
   });
 
-  it('FormValidators use the store resolvers, so unique works in a form control', () => {
+  it("FormValidators use the service's entity store, so unique works in a form control", () => {
     const tags = [{ kind: 'Tag', name: 'a' }];
     const injector = createInjector([
-      provideValidation({
-        metadata: { Tag: { properties: { name: { displayName: 'Name', validators: ['unique'] } } } },
-        storeResolvers: [(m) => ((m as { kind?: string })?.kind === 'Tag' ? () => tags : undefined)],
-      }),
+      provideValidation({ metadata: { Tag: { properties: { name: { displayName: 'Name', validators: ['unique'] } } } } }),
     ]);
     const forms = injector.get(FormValidators);
     const model = { kind: 'Tag', name: '' };
+    const store = createEntityStore({ entities: () => [model, ...tags].map((entity) => ({ entityType: 'Tag', entity })), changes: () => undefined });
+    injector.get(ValidationService).setEntityStore(store);
     const control = new FormControl('a', forms.createSyncValidatorFn(() => ({ entity: model, entityType: 'Tag' }), 'name'));
     expect(Object.keys(control.errors ?? {})).toEqual(['unique_name']);
     control.setValue('c');

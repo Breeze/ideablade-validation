@@ -70,29 +70,22 @@ namespace IdeaBlade.Validation
 
         public sealed override bool IsAsync => false;
 
-        /// <summary>Runs this validator. Returns a <see cref="ValidationError"/> if validation fails, null otherwise.</summary>
-        public ValidationError? Validate(object? value, ValidationContext? context = null)
+        /// <summary>
+        /// Runs this validator and returns its errors, empty when the value is valid. By default that's one error when
+        /// <see cref="ValidateCore"/> fails. A validator that reports several errors in one pass, such as
+        /// <see cref="Validators.DataAnnotationsValidator"/> (one per failed attribute), overrides this.
+        /// </summary>
+        public virtual IReadOnlyList<ValidationError> Validate(object? value, ValidationContext? context = null)
         {
             var ctx = GetValidatorFunctionContext(value, context);
             try
             {
-                return ValidateCore(value, ctx) ? null : CreateError(ctx);
+                return ValidateCore(value, ctx) ? Array.Empty<ValidationError>() : new[] { CreateError(ctx) };
             }
             catch (Exception e)
             {
-                return CreateError(ctx, e);
+                return new[] { CreateError(ctx, e) };
             }
-        }
-
-        /// <summary>
-        /// Runs this validator and returns all of its errors. The service calls this. A validator that can report
-        /// several errors at once, such as <see cref="Validators.DataAnnotationsValidator"/> (one per failed
-        /// attribute), overrides it; the default returns the single error of <see cref="Validate"/>.
-        /// </summary>
-        public virtual IReadOnlyList<ValidationError> ValidateAll(object? value, ValidationContext? context = null)
-        {
-            var error = Validate(value, context);
-            return error == null ? Array.Empty<ValidationError>() : new[] { error };
         }
 
         /// <summary>Returns true when the value is valid.</summary>
@@ -106,12 +99,16 @@ namespace IdeaBlade.Validation
 
         public sealed override bool IsAsync => true;
 
-        public async Task<ValidationError?> ValidateAsync(object? value, ValidationContext? context = null, CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Runs this validator and returns its errors, empty when the value is valid. By default that's one error when
+        /// <see cref="ValidateCoreAsync"/> fails. A validator that reports several errors in one pass overrides this.
+        /// </summary>
+        public virtual async Task<IReadOnlyList<ValidationError>> ValidateAsync(object? value, ValidationContext? context = null, CancellationToken cancellationToken = default)
         {
             var ctx = GetValidatorFunctionContext(value, context);
             try
             {
-                return await ValidateCoreAsync(value, ctx, cancellationToken).ConfigureAwait(false) ? null : CreateError(ctx);
+                return await ValidateCoreAsync(value, ctx, cancellationToken).ConfigureAwait(false) ? Array.Empty<ValidationError>() : new[] { CreateError(ctx) };
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -119,7 +116,7 @@ namespace IdeaBlade.Validation
             }
             catch (Exception e)
             {
-                return CreateError(ctx, e);
+                return new[] { CreateError(ctx, e) };
             }
         }
 

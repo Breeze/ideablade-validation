@@ -51,7 +51,7 @@ public class OrdersController(ValidationService validation) : ControllerBase
         var errors = await validation.ValidateModelAsync(order, cancellationToken: ct);
         if (errors.HasErrors())
             return ValidationProblem(new ValidationProblemDetails(
-                errors.GroupBy(e => e.PropertyName ?? "").ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray())));
+                errors.SelectMany(e => e.PropertyNames.DefaultIfEmpty("").Select(p => (Property: p, e.ErrorMessage))).GroupBy(e => e.Property).ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray())));
         ...
     }
 }
@@ -67,7 +67,7 @@ public class OrdersController(ValidationService validation) : ControllerBase
 
 `ValidationOptions` has `Predicate`, `Context`, `ConditionContextResolver`, `Store`, and `ExpressionScope`, the same meanings as in TS ([concepts.md](concepts.md)).
 
-`ValidationError` has `Key`, `Id`, `PropertyName`, `Value`, `ErrorMessage`, `GetErrorMessage(displayName)` and `Context`. `errors.HasErrors()` and `errors.Success()` are extension methods.
+`ValidationError` has `Key`, `Id`, `PropertyNames` (the properties it is about: a property rule's property, or those a model-level rule names in `propertyNames`), `IsFor(propertyName)`, `Value`, `ErrorMessage`, `GetErrorMessage(displayName)` and `Context`. `errors.HasErrors()` and `errors.Success()` are extension methods.
 
 ### Model type names
 
@@ -113,7 +113,7 @@ public sealed class MultipleOfValidator : Validator
 services.AddIdeaBladeValidation(v => v.AddValidators(new ValidatorFactory("multipleOf", (g, c) => new MultipleOfValidator(g, c))));
 ```
 
-A sync validator that reports several errors at once overrides `ValidateAll(value, context)`; the service calls it, and by default it returns the single error of `Validate`.
+`Validate` returns a validator's errors, and `ValidateAsync` an async one's: empty when the value is valid, one error by default when `ValidateCore` / `ValidateCoreAsync` fails. A validator that reports several errors in one pass, such as `DataAnnotationsValidator`, overrides them. In TypeScript, `validate` likewise returns a `ValidationError`, an array of them, or `null` (an Observable of that for async validators).
 
 Async validators derive from `AsyncValidator` and override `ValidateCoreAsync(value, context, cancellationToken)`. If a validator throws, the exception counts as a failure and is stored in `context["exception"]`.
 

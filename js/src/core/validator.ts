@@ -24,13 +24,6 @@ export interface Validator {
    * needs only one metadata entry and runs each rule once.
    */
   validateAsync?(value: unknown, context?: ValidationContext): AsyncValidationOutcome;
-  /**
-   * Optional, for model-level validators: checks a single property of the model. A model-level validator normally
-   * has no part in validating one property (`ValidationOptions.propertyName`, which the form integrations use); one
-   * that implements this does, and reports that property's errors. `breeze` implements it, so Breeze's own property
-   * rules show on form fields like any other rule.
-   */
-  validateProperty?(model: unknown, propertyName: string, context?: ValidationContext): SyncValidationOutcome;
 }
 
 /** Synchronous validation function: return true when the value is valid. */
@@ -109,7 +102,8 @@ export class SyncValidator extends ValidatorBase implements Validator {
     super(name, group, context);
   }
 
-  validate(value: unknown, context?: ValidationContext): ValidationError | null {
+  /** Returns the error, or several when a subclass reports more than one in a pass; null when valid. */
+  validate(value: unknown, context?: ValidationContext): ValidationError | ValidationError[] | null {
     const ctx = this.getValidatorFunctionContext(value, context);
     try {
       return this.validatorFn(value, ctx) ? null : this.createError(ctx);
@@ -132,7 +126,8 @@ export class AsyncValidator extends ValidatorBase implements Validator {
     super(name, group, context);
   }
 
-  validate(value: unknown, context?: ValidationContext): Observable<ValidationError | null> {
+  /** Emits the error, or several when a subclass reports more than one in a pass; null when valid. */
+  validate(value: unknown, context?: ValidationContext): Observable<ValidationError | ValidationError[] | null> {
     const ctx = this.getValidatorFunctionContext(value, context);
     try {
       const result = this.validatorFn(value, ctx);

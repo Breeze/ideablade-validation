@@ -41,10 +41,10 @@ function CustomerForm({ customer }: { customer: Customer }) {
 | `errors` | All errors: sync errors, plus async errors once they arrive |
 | `isValid` | No errors and nothing pending |
 | `pending` | Async validators are running |
-| `errorsFor(prop?)` / `messagesFor(prop?)` | Errors for one property. Call without an argument to get model-level errors. |
+| `errorsFor(prop?)` / `messagesFor(prop?)` | Errors about one property: its rules, and model-level rules that name it (`propertyNames`). Without an argument, the errors about the model as a whole. |
 | `revalidate()` | Force re-validation |
 
-Sync rules run during render, so there's no flash of "valid". Async rules run in an effect. When the model changes, the previous async run is cancelled and its late results are ignored.
+The hook validates the whole model, so a rule spanning properties, such as "start before end", shows for both, and a rule whose condition reads another property follows it. Sync rules run during render, so there's no flash of "valid". Async rules run in an effect. When the model changes, the previous async run is cancelled and its late results are ignored.
 
 | Option | |
 |---|---|
@@ -53,11 +53,25 @@ Sync rules run during render, so there's no flash of "valid". Async rules run in
 | `disabled` | Skip validation, for example while loading |
 | `predicate`, `context`, `store`, `expressionScope`, … | Passed to the service |
 
-**Objects mutated in place** (Breeze entities, MobX objects) keep the same identity, so React can't see that they changed. Pass what changed in `deps`, or call `revalidate()`:
+**Objects mutated in place** (Breeze entities, MobX objects) keep the same identity, so React can't see that they changed. When the model is in the service's [entity store](concepts.md#scopes-a-service-and-its-entity-store), the hook re-validates whenever the store reports a change. Otherwise, pass what changed in `deps`, or call `revalidate()`:
 
 ```tsx
 const { messagesFor } = useValidation(entity, 'Customer', { deps: [entity.email, entity.name] });
 ```
+
+## Scopes: `useValidationScope(entityStore)`
+
+A validation service has one entity store, the entities of its scope, such as a unit of work's ([concepts.md](concepts.md#scopes-a-service-and-its-entity-store)). `useValidationScope` returns a service with the nearest provider's metadata and options and its own store; provide it to the components of the scope:
+
+```tsx
+function OrderEditor({ unitOfWork }: { unitOfWork: UnitOfWork }) {
+  const store = useMemo(() => breezeEntityStore(unitOfWork.manager), [unitOfWork]);
+  const service = useValidationScope(store);
+  return <ValidationProvider service={service}><OrderForm order={unitOfWork.order} /></ValidationProvider>;
+}
+```
+
+`store(type)` and `unique` then see the store's entities, and `useValidation` re-validates when they change.
 
 ## `useEntityStoreValidation(store, options?)`
 

@@ -94,6 +94,11 @@
         "name": { "$ref": "#/$defs/validatorName" },
         "id": { "type": "string", "description": "Stable identifier reported as ValidationError.id." },
         "async": { "type": "boolean", "description": "Select the asynchronous validator registered under 'name'." },
+        "propertyNames": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "For a model-level validator: the properties its errors are about, such as both dates of a 'start before end' rule. Forms show the error on each of those fields."
+        },
         "condition": {
           "$ref": "#/$defs/expression",
           "description": "The validator only runs when this is truthy. Variables: model, value, context, isClient, isServer, plus registered functions."

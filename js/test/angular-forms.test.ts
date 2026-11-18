@@ -99,7 +99,7 @@ describe('Template-driven forms', () => {
   it('errors are ValidationErrors keyed by error key', () => {
     const errors = control('name').errors!;
     expect(Object.keys(errors)).toEqual(['required_name']);
-    expect((errors['required_name'] as ValidationError).propertyName).toBe('name');
+    expect((errors['required_name'] as ValidationError).propertyNames).toEqual(['name']);
   });
 
   it('runs async rules as an async validator', async () => {

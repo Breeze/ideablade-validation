@@ -55,7 +55,7 @@ public class ValidationServiceTests
         Assert.Equal("First name is required", error.ErrorMessage);
         Assert.Equal("required_firstName", error.Key);
         Assert.Equal("REQUIRED", error.Id);
-        Assert.Equal("firstName", error.PropertyName);
+        Assert.Equal(new[] { "firstName" }, error.PropertyNames);
     }
 
     [Fact]
@@ -286,7 +286,7 @@ public class DefaultValidatorTests
     private static IEnumerable<string?> Fails(string property, object? value)
     {
         var model = new Dictionary<string, object?> { ["tags"] = new List<string> { "a" }, [property] = value };
-        return Service.ValidateModel(model, "T").Select(e => e.PropertyName);
+        return Service.ValidateModel(model, "T").Select(e => e.PropertyNames.FirstOrDefault());
     }
 
     public static TheoryData<string, object?, bool> Cases => new TheoryData<string, object?, bool>
@@ -339,7 +339,7 @@ public class DefaultValidatorTests
     public void CompareUsesOtherProperty()
     {
         var model = new Dictionary<string, object?> { ["tags"] = new List<string> { "a" }, ["start"] = 5, ["end"] = 4 };
-        Assert.Equal(new[] { "end" }, Service.ValidateModel(model, "T").Select(e => e.PropertyName));
+        Assert.Equal(new[] { "end" }, Service.ValidateModel(model, "T").Select(e => e.PropertyNames.Single()));
         model["start"] = new DateTime(2020, 1, 1);
         model["end"] = new DateTime(2021, 1, 1);
         Assert.Empty(Service.ValidateModel(model, "T"));
@@ -349,7 +349,7 @@ public class DefaultValidatorTests
     public void RequiredHandlesEmptyCollections()
     {
         var model = new Dictionary<string, object?> { ["tags"] = new List<string>() };
-        Assert.Equal(new[] { "tags" }, Service.ValidateModel(model, "T").Select(e => e.PropertyName));
+        Assert.Equal(new[] { "tags" }, Service.ValidateModel(model, "T").Select(e => e.PropertyNames.Single()));
     }
 
     [Fact]

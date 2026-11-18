@@ -26,6 +26,12 @@ export interface ValidatorConfig {
   async?: boolean;
   /** Expression; the validator only runs when it evaluates truthy. */
   condition?: string;
+  /**
+   * For a model-level validator: the properties its errors are about, such as `["startDate", "endDate"]` for a
+   * rule that compares them. Reported as `ValidationError.propertyNames`, so a form shows the error on each of
+   * those fields.
+   */
+  propertyNames?: string[];
 }
 
 /** A validator name or full config. */

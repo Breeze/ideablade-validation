@@ -70,7 +70,7 @@ This lets a feature module add rules to a shared model.
 |---|---|
 | `extends` | Inherit from another model type. Inherited items are the parent's validators (which already include the globals, so nothing is duplicated) and its properties. |
 | `condition` | Expression. When validating an **entity store**, models where this is falsy are skipped entirely. Variables: `model`, `entityInfos`, `findEntity(id, type)`, `store(type)`, `isClient`, `isServer`. If missing, the parent's condition applies. |
-| `validators` | Model-level validators. They receive the **whole model** as `value`, and their errors have no `propertyName` unless the validator sets one. |
+| `validators` | Model-level validators. They receive the **whole model** as `value`. Their errors are about the properties they name (`propertyNames`, below), or about the model as a whole. |
 | `properties` | Map of property name → property entry. |
 
 ## Property entry
@@ -94,6 +94,7 @@ A validator can be a bare name (`"email"`) or an object:
 | `context` | Settings for the validator (`minValue`, `expression`, …) plus `messageTemplate` / `displayName` overrides. |
 | `async` | `true` selects the asynchronous validator registered under `name`. |
 | `condition` | Expression. The validator only runs when it's truthy. Variables: `model`, `value`, `context`, `isClient`, `isServer`, plus the expression scope. |
+| `propertyNames` | For a model-level validator: the properties its errors are about, such as `["startDate", "endDate"]` for a rule comparing them. Reported as `ValidationError.propertyNames`; forms show the error on each of those fields ([concepts.md](concepts.md#rules-that-span-properties)). |
 
 ## Groups
 

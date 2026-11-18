@@ -66,6 +66,11 @@ export class ValidatorMetadata {
     return this.config.condition;
   }
 
+  /** For a model-level validator: the properties its errors are about (`propertyNames` in the metadata). */
+  get propertyNames(): readonly string[] | undefined {
+    return this.config.propertyNames;
+  }
+
   /** Evaluates the `condition` (if any). Variables: `context`, `model`, `value`, `isClient`, `isServer` and the expression scope. */
   evalCondition(context: ValidationContext, contextResolver: ConditionContextResolver = identityResolver): boolean {
     const condition = this.config.condition;

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   type EntityInfo,
+  createEntityStore,
   type ModelValidationMetadataMap,
   type RuleSource,
   SyncValidator,
@@ -153,24 +154,43 @@ describe('from: inheriting the rules of another property', () => {
   });
 });
 
-describe('store resolvers', () => {
+describe('a single model in a store', () => {
   const tagMetadata = { Tag: { properties: { name: { displayName: 'Name', validators: ['unique'] } } } };
   const tags = [{ kind: 'Tag', name: 'a' }, { kind: 'Tag', name: 'b' }];
-  const tagStore = (m: unknown) => ((m as { kind?: string })?.kind === 'Tag' ? () => tags : undefined);
 
-  it('gives validations without a store of their own a store(type), so unique works', () => {
-    const service = createValidationService({ metadata: tagMetadata, storeResolvers: [() => undefined, tagStore] });
-    expect(service.validateModelSync({ kind: 'Tag', name: 'a' }, 'Tag').map((e) => e.errorMessage)).toEqual(['Name must be unique']);
-    expect(service.validateModelSync(tags[0], 'Tag')).toEqual([]); // the model itself doesn't count
-    expect(service.resolveStore({})).toBeUndefined();
+  it("sees its siblings in the service's entity store, for either store shape", () => {
+    const service = createValidationService({ metadata: tagMetadata });
+    const infos = tags.map((entity) => ({ entityType: 'Tag', entity }));
+    for (const entityStore of [
+      createEntityStore({ entities: () => infos, changes: () => undefined }),
+      { entities$: new BehaviorSubject(infos) },
+    ]) {
+      const scoped = service.createScope(entityStore);
+      const duplicate = { kind: 'Tag', name: 'a' };
+      expect(service.validateModelSync(duplicate, 'Tag')).toEqual([]); // the parent has no store
+      expect(scoped.validateModelSync(duplicate, 'Tag').map((e) => e.errorMessage)).toEqual(['Name must be unique']);
+      expect(scoped.validateModelSync(tags[0], 'Tag')).toEqual([]); // the model itself doesn't count
+      // A form validates a view of the model: unique still knows it's the same model.
+      const view = Object.create(tags[1], { name: { value: 'a' } });
+      expect(scoped.validateModelSync(view, 'Tag', { context: { originalModel: tags[1] } }).map((e) => e.errorMessage)).toEqual([
+        'Name must be unique',
+      ]);
+    }
   });
 
-  it('an explicit options.store takes precedence', () => {
-    const service = createValidationService({ metadata: tagMetadata, storeResolvers: [tagStore] });
-    expect(service.validateModelSync({ kind: 'Tag', name: 'a' }, 'Tag', { store: () => [] })).toEqual([]);
+  it('reports changes of its entity store, and another store, to the forms', () => {
+    const changes = new Subject<void>();
+    const service = createValidationService({ metadata: tagMetadata, entityStore: createEntityStore({ entities: () => [], changes }) });
+    const seen: unknown[] = [];
+    const subscription = service.entityStoreChanged$.subscribe(() => seen.push('change'));
+    changes.next();
+    service.setEntityStore(createEntityStore({ entities: () => [], changes: () => undefined }));
+    changes.next(); // the old store no longer counts
+    expect(seen).toEqual(['change', 'change']);
+    subscription.unsubscribe();
   });
 
-  it('without a resolver, unique has nothing to compare against and passes', () => {
+  it('without a store, unique has nothing to compare against and passes', () => {
     const service = createValidationService({ metadata: tagMetadata });
     expect(service.validateModelSync({ kind: 'Tag', name: 'a' }, 'Tag')).toEqual([]);
   });
@@ -188,7 +208,7 @@ describe('ValidationService (sync)', () => {
     expect(errors.map((e) => e.errorMessage)).toEqual(['First name is required']);
     expect(errors[0].key).toBe('required_firstName');
     expect(errors[0].id).toBe('REQUIRED');
-    expect(errors[0].propertyName).toBe('firstName');
+    expect(errors[0].propertyNames).toEqual(['firstName']);
   });
 
   it('runs global validators for every model type, including unknown types', () => {
@@ -451,7 +471,7 @@ describe('default validators', () => {
       },
     },
   });
-  const keys = (model: Record<string, unknown>) => service.validateModelSync({ tags: ['a'], ...model }, 'T').map((e) => e.propertyName);
+  const keys = (model: Record<string, unknown>) => service.validateModelSync({ tags: ['a'], ...model }, 'T').map((e) => e.propertyNames[0]);
 
   it.each([
     ['ssn', '123-45-6789', true],

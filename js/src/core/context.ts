@@ -27,7 +27,13 @@ export type StoreQuery = (entityType: string) => readonly unknown[];
 export interface ValidationContext extends ValidationContextBase {
   model: any; // eslint-disable-line @typescript-eslint/no-explicit-any
   modelType: string;
+  /** The property being validated, for a property validator. */
   propertyName?: string;
+  /**
+   * For a model-level validator: the properties its errors are about. Set from the metadata (`propertyNames`), or by
+   * the validator itself. See `ValidationError.propertyNames`.
+   */
+  propertyNames?: readonly string[];
   metadata: ModelMetadata;
   isClient: boolean;
   isServer: boolean;

@@ -29,7 +29,18 @@ namespace IdeaBlade.Validation
 
         /// <summary>Stable identifier from the metadata (<c>id</c>), or the key if no id was configured.</summary>
         public string Id => Validator.Metadata?.Id ?? Key;
-        public string? PropertyName => Context.PropertyName;
+        /// <summary>
+        /// The properties the error is about. For a property rule, the property. For a model-level rule, the properties it
+        /// names (<c>propertyNames</c> in the metadata, or set by the validator), such as both dates of a "start before
+        /// end" rule; empty when it is about the model as a whole.
+        /// </summary>
+        public IReadOnlyList<string> PropertyNames =>
+            Context.PropertyNames is { Count: > 0 } names ? names
+            : Context.PropertyName != null ? new[] { Context.PropertyName }
+            : Array.Empty<string>();
+
+        /// <summary>True when the error is about <paramref name="propertyName"/> (one of its <see cref="PropertyNames"/>).</summary>
+        public bool IsFor(string propertyName) => PropertyNames.Contains(propertyName);
         public object? Model => Context.Model;
         public string? ModelType => Context.ModelType;
         public object? Value => Context.Value;

@@ -4,7 +4,7 @@ import { type ReactNode, useState } from 'react';
 import { Subject, delay, of } from 'rxjs';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { asyncValidator, createValidationService } from '../src/index.js';
+import { asyncValidator, createEntityStore, createValidationService } from '../src/index.js';
 import { ValidationProvider, useEntityStoreValidation, useValidation } from '../src/react/index.js';
 
 afterEach(cleanup);
@@ -91,5 +91,45 @@ describe('useEntityStoreValidation', () => {
     expect(result.current).toBeUndefined();
     act(() => entities$.next([{ entityType: 'User', entity: { name: '' } }]));
     await waitFor(() => expect(result.current?.validationErrors).toHaveLength(1));
+  });
+});
+
+describe('useValidation: the model as a whole', () => {
+  const bookingMetadata = {
+    Booking: {
+      validators: [
+        {
+          name: 'expression',
+          propertyNames: ['startDate', 'endDate'],
+          context: { expression: 'model.startDate < model.endDate', messageTemplate: 'Start must be before end' },
+        },
+        { name: 'expression', context: { expression: "model.note !== 'bad'", messageTemplate: 'Not a good booking' } },
+      ],
+      properties: { reason: { displayName: 'Reason', validators: [{ name: 'required', condition: "model.kind === 'other'" }] } },
+    },
+  };
+
+  it('reports a model-level rule on every field it names, and model-wide errors without a name', () => {
+    const changes = new Subject<void>();
+    const booking = { startDate: '2026-02-01', endDate: '2026-01-01', kind: 'other', reason: '', note: '' };
+    // The booking's scope: a service whose entity store holds the booking.
+    const store = createEntityStore({ entities: () => [{ entityType: 'Booking', entity: booking }], changes });
+    const service = createValidationService({ metadata: bookingMetadata }).createScope(store);
+    const wrapper = ({ children }: { children: ReactNode }) => <ValidationProvider service={service}>{children}</ValidationProvider>;
+    const { result } = renderHook(() => useValidation(booking, 'Booking', { async: false }), { wrapper });
+
+    expect(result.current.messagesFor('startDate')).toEqual(['Start must be before end']);
+    expect(result.current.messagesFor('endDate')).toEqual(['Start must be before end']);
+    expect(result.current.messagesFor('reason')).toEqual(['Reason is required']);
+    expect(result.current.messagesFor()).toEqual([]);
+
+    // Changed elsewhere; the service's entity store reports it.
+    act(() => {
+      booking.note = 'bad';
+      booking.kind = '';
+      changes.next();
+    });
+    expect(result.current.messagesFor()).toEqual(['Not a good booking']);
+    expect(result.current.messagesFor('reason')).toEqual([]);
   });
 });

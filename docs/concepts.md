@@ -16,7 +16,7 @@
           validateModelAsync
                     │
                     ▼
-            ValidationError[]  (key, id, propertyName, errorMessage, context)
+            ValidationError[]  (key, id, propertyNames, errorMessage, context)
 ```
 
 ## Building blocks
@@ -32,74 +32,84 @@
 | **Condition** | An expression on a validator: it runs only when the condition is truthy. On a model, a condition decides whether the model is validated at all during entity-store validation. See [expressions.md](expressions.md). |
 | **Group** | `{ "group": "submit", "validators": [...] }`. Groups let you run subsets of rules, for example only the rules for a workflow step. Choose them with `options.predicate`. Grouped validators also get distinct error keys (`required_submit_email`). |
 | **Entity store** | Any source of entities: `{ entities$, getEntities? }`, or `{ changes$, entities(), getEntities? }` for sources that only signal changes. `validateEntityStore` re-validates whenever the entities change, the metadata changes, `options.event$` emits, or `revalidate()` is called, and it coalesces bursts of those changes ([coalescing](#coalescing)). Use `breezeEntityStore(manager)` for Breeze, `signalEntityStore` for Angular signals, and `createEntityStore` for anything else ([below](#writing-an-entity-store)). |
-| **ValidationError** | `key` (`name[_group][_property]`), `id` (from metadata, else `key`), `propertyName`, `model`, `modelType`, `value`, `errorMessage`, and the full `context`. |
+| **ValidationError** | `key` (`name[_group][_property]`), `id` (from metadata, else `key`), `propertyNames`, `model`, `modelType`, `value`, `errorMessage`, and the full `context`. |
 
 ## Resolvers
 
-Some validations start from nothing but a model: a form field bound to an object, or a single entity checked on its own. Two kinds of resolver fill in what such a validation doesn't know. You register them once on the service, and the framework asks them whenever it needs to.
+Some validations start from nothing but a model, such as a form bound to an object. A **model type resolver** answers what such a validation doesn't know: which model type is this? That decides which metadata applies. You register resolvers once on the service.
 
-| Resolver | Signature | Answers | Asked by |
-|---|---|---|---|
-| **Model type resolver** | `(model) => string \| undefined` | Which model type is this? This decides which metadata applies. | The Angular template-driven-forms directives, when a field or form has no `validationModelType`. Your own code, through `service.resolveModelType(model)`. |
-| **Store resolver** | `(model) => StoreQuery \| undefined` | Which other entities sit next to this one? This becomes `store(type)` in expressions and in the `unique` validator. | Every validation that has no store of its own: `validateModelSync`, `validateModelAsync`, `validate`, `FormValidators`, the template-driven directives, the Angular signal helpers and React's `useValidation`. Your own code, through `service.resolveStore(model)`. |
-
-### How they're consulted
+| Signature | Asked by |
+|---|---|
+| `(model) => string \| undefined` | The Angular template-driven-forms directives and Signal Forms, when no model type is set. Your own code, through `service.resolveModelType(model)`. |
 
 - **Return `undefined` for models you don't recognize.** A resolver should handle only the models it knows about, so several can live side by side, such as one for Breeze entities and one for your own view models.
 - **Resolvers run in registration order, and the first answer wins.**
-- **Explicit settings come first.** A model type set in the call or the template (`validationModelType`) is used before any resolver. For the store, an explicit `options.store` comes first, and so does the store of entity store validation, which already knows the whole set. Resolvers only fill in what's missing.
-- **No answer:**
-  - Without a model type, the template-driven directives throw an error asking for `validationModelType`.
-  - Without a store, `store(type)` isn't defined in expressions, and `unique` passes because it has nothing to compare against.
-- **Forms validate a view of the model.** Form validation checks a view of the model that has the control's value substituted in. The view inherits from the model, so a resolver that reads properties, or checks for them with `in`, sees the model's values. An `instanceof` check also passes. Only an identity check (`model === entity`) fails. If you need the model object itself, `Object.getPrototypeOf(view)` returns it.
-
-### Writing your own
+- **Explicit settings come first.** A model type set in the call or the template (`validationModelType`) is used before any resolver.
+- **No answer:** the template-driven directives throw an error asking for `validationModelType`.
+- **Forms validate a view of the model.** A form checks a view of the model that has the controls' values in place of the properties. The view inherits from the model, so a resolver that reads properties, or checks for them with `in`, sees the model's values. An `instanceof` check also passes. Only an identity check (`model === entity`) fails. If you need the model object itself, `Object.getPrototypeOf(view)` returns it.
 
 ```ts
-import { createValidationService, type ModelTypeResolver, type StoreResolver } from '@ideablade/validation';
+import { createValidationService, type ModelTypeResolver } from '@ideablade/validation';
 
 // View models tagged with a $type property
 const taggedModelType: ModelTypeResolver = (model) => (model as { $type?: string } | null)?.$type;
 
-// Rows that belong to a grid: unique checks against the other rows of the same grid
-const gridRows: StoreResolver = (model) => {
-  const grid = (model as { grid?: { rows: Row[] } } | null)?.grid;
-  return grid ? (type) => grid.rows.filter((row) => row.$type === type) : undefined;
-};
-
-const service = createValidationService({
-  metadata,
-  modelTypeResolvers: [taggedModelType],
-  storeResolvers: [gridRows],
-});
+const service = createValidationService({ metadata, modelTypeResolvers: [taggedModelType] });
 ```
 
-### Registering them
+| Where | Registering |
+|---|---|
+| Core | `createValidationService({ modelTypeResolvers })` |
+| Angular | `provideValidation({ modelTypeResolvers })`, `provideModelTypeResolvers(...)`, `VALIDATION_MODEL_TYPE_RESOLVER` |
+| React | `<ValidationProvider modelTypeResolvers={...}>` |
 
-| Where | Model type resolvers | Store resolvers |
-|---|---|---|
-| Core | `createValidationService({ modelTypeResolvers })` | `createValidationService({ storeResolvers })` |
-| Angular | `provideValidation({ modelTypeResolvers })`, `provideModelTypeResolvers(...)`, `VALIDATION_MODEL_TYPE_RESOLVER` | `provideValidation({ storeResolvers })`, `provideStoreResolvers(...)`, `VALIDATION_STORE_RESOLVER` |
-| React | `<ValidationProvider modelTypeResolvers={...}>` | `<ValidationProvider storeResolvers={...}>` |
+React's `useValidation(model, modelType)` takes the model type as an argument, so model type resolvers only matter there if your own code calls `service.resolveModelType`. For Breeze, `breezeModelType` returns the entity type's short name ([breeze.md](breeze.md#model-type-names)).
 
-React's `useValidation(model, modelType)` takes the model type as an argument, so model type resolvers only matter there if your own code calls `service.resolveModelType`.
+## Scopes: a service and its entity store
 
-### Breeze
-
-`@ideablade/validation/breeze` provides one of each. For a Breeze app, register both:
+A validation service has one **entity store**: the entities of its scope, such as a unit of work's ([Writing an entity store](#writing-an-entity-store) shows the two shapes a store can have). The service and the store share that scope: an app with one global unit of work has one service; an app with a unit of work per route has a service per route.
 
 ```ts
-import { breezeModelType, breezeStoreQuery, breezeValidator } from '@ideablade/validation/breeze';
-
-provideValidation({
-  metadata,
-  validators: [breezeValidator],
-  modelTypeResolvers: [breezeModelType],   // the entity type's short name
-  storeResolvers: [breezeStoreQuery],      // live entities of the entity's own EntityManager
-});
+const service = createValidationService({ metadata, entityStore: breezeEntityStore(manager) });
+const scoped = service.createScope(otherStore);   // same metadata and options, its own store
+scoped.setEntityStore(nextStore);                  // the scope moved on to another unit of work
 ```
 
-See [breeze.md](breeze.md#model-type-names) for the details.
+A single model or a form validated by the service is validated in its store:
+
+- **`store(type)`**, and the `unique` validator, see the model's siblings in the store. This applies to `validateModelSync`, `validateModelAsync`, `validate`, and every form integration. An explicit `options.store` comes first.
+- **The forms re-validate when the store changes**, so a change made elsewhere updates every field: the model changed in code, or another entity a rule reads, such as an address deleted from a resource that must keep one. `service.entityStoreChanged$` emits on each change, and when another store is set.
+- **`validateEntityStore()`** without arguments validates it.
+
+The framework doesn't know what kind of store it is; every store has the same shape. Without a store, `store(type)` isn't defined, and `unique` passes because it has nothing to compare against.
+
+| Where | A scope's service |
+|---|---|
+| Core | `service.createScope(entityStore)`, `service.setEntityStore(entityStore)` |
+| Angular | `provideValidationScope(() => entityStore)` in a route's or component's providers; `inject(ValidationService).setEntityStore(...)` |
+| React | `useValidationScope(entityStore)`, passed to a nested `<ValidationProvider service={...}>` |
+
+## Rules that span properties
+
+A model-level rule can be about several properties, such as "the start date is before the end date". Name them with `propertyNames` in the metadata, and the error reports them:
+
+```json
+{
+  "Booking": {
+    "validators": [
+      {
+        "name": "expression",
+        "propertyNames": ["startDate", "endDate"],
+        "context": { "expression": "model.startDate < model.endDate", "messageTemplate": "The start must be before the end" }
+      }
+    ]
+  }
+}
+```
+
+`ValidationError.propertyNames` holds the properties an error is about: the property of a property rule, the properties a model-level rule names, or none for a rule about the model as a whole. `error.isFor('endDate')` tests one. A validator can also set `context.propertyNames` itself.
+
+The form integrations validate the whole model, with the current values of all fields, whenever any field changes. Each field shows the errors about its property, so both dates show the rule above, and a change in one re-checks the other. A rule whose `condition` reads another field is re-checked the same way. Errors about no property are the form's own: `modelErrors` on Angular's form directive, and `errorsFor()` without a name in React.
 
 ## Rule sources
 

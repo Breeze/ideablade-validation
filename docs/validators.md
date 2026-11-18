@@ -24,7 +24,7 @@ All of these are registered by default (`defaultValidators` in TS, `DefaultValid
 | `invalidValues` | `values` (entries like `"/^Z/i"` are patterns) | `'%value%' is not a valid value for %displayName%` |
 | `validValues` | `values` | same |
 | `expression` | `expression`, `skipEmpty` | `%displayName% is invalid` |
-| `unique` | `ignoreCase`. Needs `store(type)`: entity store validation and `options.store` supply one, and so do the store resolvers (`storeResolvers`, such as `breezeStoreQuery`) for single models and form controls. Without a store it passes. | `%displayName% must be unique` |
+| `unique` | `ignoreCase`. Needs `store(type)`: entity store validation and `options.store` supply one, and for single models and forms, the service's [entity store](concepts.md#scopes-a-service-and-its-entity-store). Without a store it passes. | `%displayName% must be unique` |
 | `breeze` (TS, from `@ideablade/validation/breeze`) | Breeze's sync validators, plus its async ones (Breeze 3) in `validateModelAsync` and `validate` | Breeze's own messages |
 
 ### Range bounds
@@ -64,7 +64,7 @@ export const multipleOf = { name: 'multipleOf', fn: (g, c) => new MultipleOfVali
 
 The validator function receives `(value, context)`. The `context` contains `model`, `modelType`, `propertyName`, `displayName`, `isClient`, `isServer`, your metadata `context` settings, values from context providers and options, and `expressionScope` (with `store`, when available). You can add values to `context` for use in the message, as `range` does with `%minValueText%`.
 
-A model-level validator whose rules belong to properties, as `breeze`'s do, can implement `validateProperty(model, propertyName, context)`. It then takes part when a single property is validated (`ValidationOptions.propertyName`, which the form integrations use for each control) and reports that property's errors. Without it, a model-level validator only runs when the whole model is validated.
+A model-level validator can say which properties an error is about by setting `context.propertyNames`, as the metadata's `propertyNames` does. The forms show the error on those fields.
 
 ### Registering
 

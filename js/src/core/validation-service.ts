@@ -1,4 +1,6 @@
 import {
+  BehaviorSubject,
+  EMPTY,
   type MonoTypeOperatorFunction,
   type Observable,
   Subject,
@@ -85,11 +87,6 @@ export type Coalesce = number | false;
 export interface ValidationOptions {
   /** Controls which validators run. */
   predicate?: ValidatorPredicate;
-  /**
-   * Validates one property: its own rules, plus the model-level validators that can check a single property
-   * (`validateProperty`, such as `breeze`). The form integrations validate a control this way.
-   */
-  propertyName?: string;
   /** Values merged into every validator's context. */
   context?: GlobalValidationContext;
   /** Emitting on this observable re-runs entity store validation. */
@@ -110,14 +107,6 @@ export interface ValidationOptions {
  */
 export type ModelTypeResolver = (model: unknown) => string | undefined;
 
-/**
- * Returns the `store(type)` lookup for a model, or undefined when it doesn't recognize the model. Used when a
- * validation has no store of its own, such as a single model or a form control, so that `store(type)` in
- * expressions and the `unique` validator can see the model's siblings.
- * @example const breezeStoreQuery: StoreResolver = (m) => isBreezeEntity(m) ? (type) => m.entityAspect.entityManager.getEntities(type) : undefined;
- */
-export type StoreResolver = (model: unknown) => StoreQuery | undefined;
-
 export interface ValidationServiceOptions {
   /** Providers that add context values per model (Angular: VALIDATOR_CONTEXT_PROVIDER). */
   contextProviders?: readonly ValidatorContextProvider[];
@@ -126,12 +115,7 @@ export interface ValidationServiceOptions {
    * directives. The first resolver that returns a name wins (Angular: VALIDATION_MODEL_TYPE_RESOLVER).
    */
   modelTypeResolvers?: readonly ModelTypeResolver[];
-  /**
-   * Provide `store(type)` for validations that don't pass one, such as `validateModelSync` and form controls.
-   * The first resolver that returns a lookup wins (Angular: VALIDATION_STORE_RESOLVER). An explicit
-   * `options.store`, and the store of entity store validation, take precedence.
-   */
-  storeResolvers?: readonly StoreResolver[];
+
   /** Trusted functions/values visible to all expressions (e.g. `{ today: () => new Date() }`). */
   expressionScope?: Record<string, unknown>;
   /**
@@ -150,6 +134,11 @@ export interface ValidationServiceOptions {
    * `options.event$` and {@link ValidationService.revalidate}.
    */
   coalesce?: Coalesce;
+  /**
+   * The service's entity store: the entities of its scope, such as a unit of work's. See
+   * {@link ValidationService.entityStore}.
+   */
+  entityStore?: EntityStore;
 }
 
 const all: ValidatorPredicate = () => true;
@@ -165,9 +154,13 @@ function flatten(outcomes: readonly SyncValidationOutcome[]): ValidationError[] 
 export class ValidationService {
   private readonly modelValidated = new Subject<{ modelInfo: EntityInfo; validationErrors: ValidationError[] }>();
   private readonly revalidateRequested = new Subject<unknown>();
+  /** The entity stores being validated (`validateEntityStore`, while subscribed), with the entities each held last. */
+  private readonly entityStoreState: BehaviorSubject<EntityStore | undefined>;
+  /** The latest entities of Observable stores, which can't be read on demand. */
+  private readonly snapshots = new WeakMap<EntityStore, readonly EntityInfo[]>();
   private readonly contextProviders: readonly ValidatorContextProvider[];
   private readonly modelTypeResolvers: readonly ModelTypeResolver[];
-  private readonly storeResolvers: readonly StoreResolver[];
+
   private readonly expressionScope: Record<string, unknown>;
   private readonly asyncTimeout: number;
   private readonly onAsyncTimeout?: ValidationServiceOptions['onAsyncTimeout'];
@@ -179,11 +172,57 @@ export class ValidationService {
   ) {
     this.contextProviders = options.contextProviders ?? [];
     this.modelTypeResolvers = options.modelTypeResolvers ?? [];
-    this.storeResolvers = options.storeResolvers ?? [];
+
     this.expressionScope = options.expressionScope ?? {};
     this.asyncTimeout = options.asyncTimeout ?? 60_000;
     this.onAsyncTimeout = options.onAsyncTimeout;
     this.coalesce = options.coalesce ?? 0;
+    this.entityStoreState = new BehaviorSubject(options.entityStore);
+    this.options = options;
+  }
+
+  private readonly options: ValidationServiceOptions;
+
+  /**
+   * A service for another scope: the same metadata and options, and its own entity store. A service and its entity
+   * store share a scope, such as a unit of work's: one for the app, or one per route (Angular:
+   * `provideValidationScope`).
+   */
+  createScope(entityStore?: EntityStore): ValidationService {
+    return new ValidationService(this.validationMetadata, { ...this.options, entityStore });
+  }
+
+  /**
+   * The service's entity store: the entities of its scope, such as a unit of work's. A single model or a form
+   * validated by this service is validated in it:
+   *
+   * - `store(type)`, and `unique`, see the model's siblings in it (an explicit `options.store` comes first);
+   * - the forms re-validate when it changes ({@link entityStoreChanged$}): the model changed in code, or an entity a
+   *   rule reads.
+   *
+   * It's also the store {@link validateEntityStore} validates when given none.
+   */
+  get entityStore(): EntityStore | undefined {
+    return this.entityStoreState.value;
+  }
+
+  /** Replaces the entity store, such as when the scope moves on to another unit of work. */
+  setEntityStore(entityStore: EntityStore | undefined): void {
+    if (entityStore !== this.entityStoreState.value) {
+      this.entityStoreState.next(entityStore);
+    }
+  }
+
+  /** Emits whenever the entities of the {@link entityStore} change, and when another store is set. */
+  get entityStoreChanged$(): Observable<void> {
+    return this.entityStoreState.pipe(
+      switchMap((store, index) => {
+        const changes$ = store ? this.changesOf(store) : EMPTY;
+        // Another store is a change too; the first one is where we start.
+        return index === 0 ? changes$ : concat(of(undefined), changes$);
+      }),
+      map(() => undefined),
+    );
   }
 
   /** The model type of `model` from the {@link ValidationServiceOptions.modelTypeResolvers}, or undefined. */
@@ -200,17 +239,6 @@ export class ValidationService {
   /** Emits after each model validation (sync or async). */
   get modelValidated$(): Observable<{ modelInfo: EntityInfo; validationErrors: ValidationError[] }> {
     return this.modelValidated.asObservable();
-  }
-
-  /** The `store(type)` lookup for `model` from the {@link ValidationServiceOptions.storeResolvers}, or undefined. */
-  resolveStore(model: unknown): StoreQuery | undefined {
-    for (const resolve of this.storeResolvers) {
-      const store = resolve(model);
-      if (store) {
-        return store;
-      }
-    }
-    return undefined;
   }
 
   /** Re-runs all active entity store validations, e.g. after a change the store does not report. */
@@ -272,13 +300,18 @@ export class ValidationService {
   }
 
   /**
-   * Continuously validates all entities of a store. Re-validates when the entities change, the metadata changes,
-   * `options.event$` emits or {@link revalidate} is called. Sync results are emitted immediately; async results as they arrive.
+   * Continuously validates all entities of a store, by default the service's {@link entityStore}. Re-validates when the
+   * entities change, the metadata changes, `options.event$` emits or {@link revalidate} is called. Sync results are
+   * emitted immediately; async results as they arrive.
    */
-  validateEntityStore(entityStore: EntityStore, options?: ValidationOptions): Observable<EntitiesValidationResult> {
-    return this.trigger(entityStore, options).pipe(
+  validateEntityStore(entityStore?: EntityStore, options?: ValidationOptions): Observable<EntitiesValidationResult> {
+    const store = entityStore ?? this.entityStore;
+    if (!store) {
+      throw new Error('validateEntityStore: pass an entity store, or give the service one (entityStore).');
+    }
+    return this.trigger(store, options).pipe(
       switchMap((entities) => {
-        const opts = this.withStore(entityStore, entities, options);
+        const opts = this.withStore(store, entities, options);
         const valid = entities.length ? this.entitiesPassingCondition(entities, opts) : [];
         if (valid.length === 0) {
           return of({ entities, validationErrors: [] as ValidationError[] });
@@ -332,15 +365,50 @@ export class ValidationService {
     return { store: entityStore.getEntities ?? storeFromEntities(entities), ...options };
   }
 
+  /** `store(type)` of the service's entity store. */
+  private entityStoreQuery(): StoreQuery | undefined {
+    const store = this.entityStore;
+    if (!store) {
+      return undefined;
+    }
+    if (store.getEntities) {
+      return store.getEntities;
+    }
+    return (entityType) => this.entitiesOf(store).filter((ei) => ei.entityType === entityType).map((ei) => ei.entity);
+  }
+
+  /** A store's current entities: read from a notifying store; the latest emitted by an Observable one. */
+  private entitiesOf(store: EntityStore): readonly EntityInfo[] {
+    if ('changes$' in store) {
+      return store.entities();
+    }
+    if (!this.snapshots.has(store)) {
+      // Nobody listens yet: take the entities it emits on subscribe, if it replays them.
+      store.entities$.pipe(take(1)).subscribe((entities) => this.snapshots.set(store, entities));
+    }
+    return this.snapshots.get(store) ?? [];
+  }
+
+  /** Emits when a store's entities change. */
+  private changesOf(store: EntityStore): Observable<unknown> {
+    if ('changes$' in store) {
+      return store.changes$;
+    }
+    return store.entities$.pipe(
+      tap((entities) => this.snapshots.set(store, entities)),
+      skip(1), // the first emission is the current entities, not a change
+    );
+  }
+
   private entitiesPassingCondition(entities: EntityInfo[], options: ValidationOptions): EntityInfo[] {
     const resolver = options.conditionContextResolver;
     const scope = this.buildExpressionScope(options);
     return entities.filter((ei) => this.validationMetadata.getModelMetadata(ei.entityType).evalCondition(entities, ei.entity, resolver, scope));
   }
 
-  /** With a `model`, a missing `options.store` falls back to the store resolvers. */
-  private buildExpressionScope(options?: ValidationOptions, model?: unknown): Record<string, unknown> {
-    const store = options?.store ?? (model === undefined ? undefined : this.resolveStore(model));
+  /** A missing `options.store` falls back to the service's entity store. */
+  private buildExpressionScope(options?: ValidationOptions): Record<string, unknown> {
+    const store = options?.store ?? this.entityStoreQuery();
     return {
       ...this.expressionScope,
       ...(store ? { store } : {}),
@@ -413,42 +481,28 @@ export class ValidationService {
       isClient: true,
       isServer: false,
       expressionEvaluator: this.validationMetadata.expressionEvaluator,
-      expressionScope: this.buildExpressionScope(options, model),
+      expressionScope: this.buildExpressionScope(options),
     };
 
     const steps: Step[] = [];
-    const add = (validatorMetadata: ValidatorMetadata, value: unknown, context: ValidationContext, validator?: Validator) => {
+    const add = (validatorMetadata: ValidatorMetadata, value: unknown, context: ValidationContext) => {
       if ((!syncOnly || !validatorMetadata.async) && validatorMetadata.evalCondition(context, resolver)) {
-        steps.push({ validator: validator ?? validatorMetadata.getValidator(), value, context });
+        steps.push({ validator: validatorMetadata.getValidator(), value, context });
       }
     };
 
-    // Validating one property: model-level validators take part only if they can check a single property.
-    const only = options?.propertyName;
     for (const validatorMetadata of metadata.validators) {
-      if (!predicate(validatorMetadata)) {
-        continue;
-      }
-      if (only === undefined) {
-        add(validatorMetadata, model, { ...base, ...(validatorMetadata.context as ValidationContextBase) } as ValidationContext);
-        continue;
-      }
-      const validator = validatorMetadata.getValidator();
-      if (validator.validateProperty) {
-        const context = {
+      if (predicate(validatorMetadata)) {
+        const propertyNames = validatorMetadata.propertyNames;
+        add(validatorMetadata, model, {
           ...base,
-          propertyName: only,
-          displayName: metadata.getProperty(only)?.displayName,
+          ...(propertyNames ? { propertyNames } : {}),
           ...(validatorMetadata.context as ValidationContextBase),
-        } as ValidationContext;
-        add(validatorMetadata, model, context, forProperty(validator, only));
+        } as ValidationContext);
       }
     }
 
     for (const property of metadata.properties) {
-      if (only !== undefined && property.propertyName !== only) {
-        continue;
-      }
       for (const validatorMetadata of property.validators) {
         if (predicate(validatorMetadata, property)) {
           const context = {
@@ -470,18 +524,6 @@ interface Step {
   validator: Validator;
   value: unknown;
   context: ValidationContext;
-}
-
-/** A model-level validator that checks one property, as a sync step of a single-property validation. */
-function forProperty(validator: Validator, propertyName: string): Validator {
-  return {
-    name: validator.name,
-    group: validator.group,
-    context: validator.context,
-    metadata: validator.metadata,
-    isAsync: false,
-    validate: (model, context) => validator.validateProperty!(model, propertyName, context),
-  };
 }
 
 function runSync(step: Step): SyncValidationOutcome {

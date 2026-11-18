@@ -12,7 +12,7 @@ services.AddIdeaBladeValidation(v => v
 
 // in a scoped service / controller
 var errors = await validationService.ValidateModelAsync(order);
-if (errors.HasErrors()) { /* errors[i].ErrorMessage, .PropertyName, .Id */ }
+if (errors.HasErrors()) { /* errors[i].ErrorMessage, .PropertyNames, .Id */ }
 ```
 
 - Targets `netstandard2.0`, `net8.0` and `net10.0`.

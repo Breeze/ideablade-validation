@@ -5,7 +5,7 @@
  * @example
  * readonly nameForm = form(signal<ResourceName>({ ... }), (name) => validateWithMetadata(name, { modelType: 'ResourceName' }));
  */
-import { inject, resource } from '@angular/core';
+import { DestroyRef, inject, resource, signal } from '@angular/core';
 import {
   type FieldContext,
   type SchemaPath,
@@ -15,7 +15,7 @@ import {
   validateAsync,
   validateTree,
 } from '@angular/forms/signals';
-import type { Observable } from 'rxjs';
+import type { Observable, Subscription } from 'rxjs';
 
 import type { GlobalValidationContext } from '../core/context.js';
 import type { ValidatorMetadata } from '../core/metadata.js';
@@ -76,7 +76,14 @@ export function validateWithMetadata<TValue>(path: SchemaPath<TValue>, options: 
   };
   const syncErrors = (model: unknown) => service.validateModelSync(model, modelTypeOf(model), { predicate, context: options.context });
 
+  // A change of the service's entity store (an entity changed in place, or one a rule reads) re-runs the validation, as
+  // the form's own value changes do.
+  const changes = signal(0);
+  const subscription: Subscription = service.entityStoreChanged$.subscribe(() => changes.update((n) => n + 1));
+  inject(DestroyRef).onDestroy(() => subscription.unsubscribe());
+
   validateTree(path, (ctx) => {
+    changes();
     const model = ctx.value();
     return model == null ? undefined : toFormErrors(syncErrors(model), ctx);
   });
@@ -111,14 +118,13 @@ function toFormErrors(errors: readonly ValidationError[], ctx: FieldContext<unkn
   if (errors.length === 0) {
     return undefined;
   }
-  return errors.map((validationError) => {
-    const child = validationError.propertyName ? (ctx.fieldTree as unknown as Record<string, unknown>)[validationError.propertyName] : undefined;
-    return {
-      kind: validationError.key,
-      message: validationError.errorMessage,
-      validationError,
-      ...(isFieldTree(child) ? { fieldTree: child } : {}),
-    };
+  // An error shows on each field it is about (`propertyNames`); without such a field, on the field validated.
+  return errors.flatMap((validationError) => {
+    const error = { kind: validationError.key, message: validationError.errorMessage, validationError };
+    const fields = validationError.propertyNames
+      .map((name) => (ctx.fieldTree as unknown as Record<string, unknown>)[name])
+      .filter((child) => isFieldTree(child));
+    return fields.length ? fields.map((fieldTree) => ({ ...error, fieldTree })) : [error];
   });
 }
 
