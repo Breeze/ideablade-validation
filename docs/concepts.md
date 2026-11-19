@@ -81,7 +81,9 @@ A single model or a form validated by the service is validated in its store:
 
 - **`store(type)`**, and the `unique` validator, see the model's siblings in the store. This applies to `validateModelSync`, `validateModelAsync`, `validate`, and every form integration. An explicit `options.store` comes first.
 - **The forms re-validate when the store changes**, so a change made elsewhere updates every field: the model changed in code, or another entity a rule reads, such as an address deleted from a resource that must keep one. `service.entityStoreChanged$` emits on each change, and when another store is set.
-- **`validateEntityStore()`** without arguments validates it.
+- **`validateEntityStore()`** without arguments validates it continuously, sync and async, and follows it when `setEntityStore` replaces it. Every caller gets the same shared validation, so a Save button and a list of broken rules react to one result. While async validators run, the result has `pending: true`; a Save button waits for `!pending && validationErrors.length === 0`.
+
+This is also how rules about related entities stay current. A rule on a resource that reads its addresses (`store('Address')`) is re-checked when an address changes, because the whole store is re-validated, while a data layer that validates entity by entity, such as Breeze, re-checks the resource only when the resource itself changes or is saved.
 
 The framework doesn't know what kind of store it is; every store has the same shape. Without a store, `store(type)` isn't defined, and `unique` passes because it has nothing to compare against.
 

@@ -222,16 +222,20 @@ export function useObservable<T>(factory: () => Observable<T>, initialValue: T, 
 }
 
 /**
- * Continuously validates an entity store (e.g. `breezeEntityStore(manager)`); returns the latest result.
- * Pass a stable `store` (memoize it) — a new store restarts validation.
+ * Continuously validates an entity store, sync and async, and returns the latest result (`pending` while async
+ * validators run). Without a store, it validates the entity store of the nearest provider's service - the scope's,
+ * see {@link useValidationScope} - and follows it when the scope moves on to another store; every component of the
+ * scope that calls it without options shares one validation. `null` validates nothing.
+ *
+ * Pass a stable `store` (memoize it): a new store restarts validation.
  */
-export function useEntityStoreValidation(store: EntityStore | null | undefined, options?: ValidationOptions): EntitiesValidationResult | undefined {
+export function useEntityStoreValidation(store?: EntityStore | null, options?: ValidationOptions): EntitiesValidationResult | undefined {
   const service = useValidationService();
   const optionsRef = useRef(options);
   optionsRef.current = options;
   const [result, setResult] = useState<EntitiesValidationResult | undefined>(undefined);
   useEffect(() => {
-    if (!store) {
+    if (store === null) {
       setResult(undefined);
       return;
     }
