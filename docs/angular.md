@@ -67,6 +67,16 @@ The store can be any [entity store](concepts.md#writing-an-entity-store): Breeze
 
 The forms in the scope validate in its store: `store(type)` and `unique` see its entities, and the fields re-validate when they change, such as an entity changed in code. When the scope moves on to another unit of work, `inject(ValidationService).setEntityStore(store)`.
 
+The scope's service also validates its whole store continuously: `validateEntityStore()` without arguments, shared by everything in the scope. Commands such as Save react to its result:
+
+```ts
+private readonly validation = toSignal(inject(ValidationService).validateEntityStore());
+readonly canSave = computed(() => {
+  const result = this.validation();
+  return this.unitOfWork.hasChanges() && !!result && !result.pending && result.validationErrors.length === 0;
+});
+```
+
 ## Using the service
 
 ```ts

@@ -444,6 +444,33 @@ describe('ValidationService (entity store)', () => {
     event$.next();
     expect((await done).validationErrors.map((e) => e.key)).toEqual(['expression']);
   });
+
+  it('reports pending while async validators run, then their errors', async () => {
+    const service = createValidationService({
+      metadata: { Account: { properties: { login: { validators: [{ name: 'available', async: true }] } } } },
+      validators: [asyncValidator('available', () => of(false).pipe(delay(10)), '%displayName% is taken')],
+    });
+    const store = entityStoreOf([{ entityType: 'Account', entity: { login: 'taken' } }]);
+    const results = await firstValueFrom(service.validateEntityStore(store).pipe(take(2), toArray()));
+    expect(results.map((r) => [r.pending, r.validationErrors.length])).toEqual([
+      [true, 0],
+      [false, 1],
+    ]);
+  });
+
+  it('validates the scope\'s store without arguments, follows setEntityStore, and is shared', async () => {
+    const service = createValidationService({ metadata: md });
+    expect(service.validateEntityStore()).toBe(service.validateEntityStore());
+
+    const results: number[] = [];
+    const sub = service.validateEntityStore().subscribe((r) => results.push(r.validationErrors.length));
+    expect(results).toEqual([0]); // no store yet: no entities
+    service.setEntityStore(entityStoreOf([{ entityType: 'Order', entity: { id: 1, number: '' } }]));
+    service.setEntityStore(entityStoreOf([{ entityType: 'Order', entity: { id: 2, number: 'B' } }, { entityType: 'OrderLine', entity: { orderId: 2 } }]));
+    service.setEntityStore(undefined);
+    sub.unsubscribe();
+    expect(results).toEqual([0, 2, 0, 0]);
+  });
 });
 
 describe('default validators', () => {

@@ -93,9 +93,16 @@ function OrderEditor({ unitOfWork }: { unitOfWork: UnitOfWork }) {
 
 `store(type)` and `unique` then see the store's entities, and `useValidation` re-validates when they change. The store can be any [entity store](concepts.md#writing-an-entity-store): Breeze's, as here, or one built with `createEntityStore` for your own data layer.
 
-## `useEntityStoreValidation(store, options?)`
+## `useEntityStoreValidation(store?, options?)`
 
-This hook continuously validates every entity in a store and returns the latest `{ entities, validationErrors }`:
+This hook continuously validates every entity in a store, sync and async, and returns the latest `{ entities, validationErrors, pending }`. Without a store, it validates the entity store of the scope's service ([Scopes](#scopes-usevalidationscopeentitystore)), and every component of the scope shares that one validation:
+
+```tsx
+const result = useEntityStoreValidation();
+const canSave = hasChanges && !!result && !result.pending && result.validationErrors.length === 0;
+```
+
+With a store, it validates that one:
 
 ```tsx
 const store = useMemo(() => breezeEntityStore(manager), [manager]);   // or any other entity store
@@ -103,7 +110,7 @@ const result = useEntityStoreValidation(store);
 return <ErrorList errors={result?.validationErrors ?? []} />;
 ```
 
-Memoize the store: a new store object restarts validation.
+Memoize the store: a new store object restarts validation. `null` validates nothing.
 
 ## Lower-level hooks
 

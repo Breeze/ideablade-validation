@@ -43,7 +43,14 @@ export type ValidatorPredicate = (validator: ValidatorMetadata, property?: Prope
 export interface EntitiesValidationResult {
   entities: EntityInfo[];
   validationErrors: ValidationError[];
+  /**
+   * True while asynchronous validators are still running: `validationErrors` then holds the sync errors only, and
+   * another result follows. Always false for one-time validation, which emits once everything has run.
+   */
+  pending: boolean;
 }
+
+const noEntities: EntitiesValidationResult = { entities: [], validationErrors: [], pending: false };
 
 /** Result of {@link ValidationService.validate}: sync errors immediately, async errors when complete. */
 export interface ModelValidationState {
@@ -300,24 +307,45 @@ export class ValidationService {
   }
 
   /**
-   * Continuously validates all entities of a store, by default the service's {@link entityStore}. Re-validates when the
-   * entities change, the metadata changes, `options.event$` emits or {@link revalidate} is called. Sync results are
-   * emitted immediately; async results as they arrive.
+   * Continuously validates all entities of a store, sync and async. Re-validates when the entities change, the metadata
+   * changes, `options.event$` emits or {@link revalidate} is called. Each run emits the sync errors at once
+   * (`pending: true` while async validators run), then all errors when the async ones complete.
+   *
+   * Without a store, it validates the service's {@link entityStore}, and follows it: when the scope moves on to another
+   * store ({@link setEntityStore}), it validates that one; without a store, it emits a result with no entities. Called
+   * without arguments, it returns the same shared Observable every time, so everything in a scope that reacts to its
+   * errors, such as a Save button and a list of broken rules, shares one validation.
    */
   validateEntityStore(entityStore?: EntityStore, options?: ValidationOptions): Observable<EntitiesValidationResult> {
-    const store = entityStore ?? this.entityStore;
-    if (!store) {
-      throw new Error('validateEntityStore: pass an entity store, or give the service one (entityStore).');
+    if (entityStore) {
+      return this.validateStore(entityStore, options);
     }
+    if (options) {
+      return this.validateScope(options);
+    }
+    return (this.scopeValidation ??= this.validateScope());
+  }
+
+  private scopeValidation?: Observable<EntitiesValidationResult>;
+
+  /** Validates the service's entity store, following {@link setEntityStore}. */
+  private validateScope(options?: ValidationOptions): Observable<EntitiesValidationResult> {
+    return this.entityStoreState.pipe(
+      switchMap((store) => (store ? this.validateStore(store, options) : of(noEntities))),
+      shareReplay({ bufferSize: 1, refCount: true }),
+    );
+  }
+
+  private validateStore(store: EntityStore, options?: ValidationOptions): Observable<EntitiesValidationResult> {
     return this.trigger(store, options).pipe(
       switchMap((entities) => {
         const opts = this.withStore(store, entities, options);
         const valid = entities.length ? this.entitiesPassingCondition(entities, opts) : [];
         if (valid.length === 0) {
-          return of({ entities, validationErrors: [] as ValidationError[] });
+          return of({ entities, validationErrors: [] as ValidationError[], pending: false });
         }
-        return combineLatest(valid.map((ei) => this.validate(ei.entity, ei.entityType, opts).pipe(map((s) => s.errors)))).pipe(
-          map((results) => ({ entities, validationErrors: results.flat() })),
+        return combineLatest(valid.map((ei) => this.validate(ei.entity, ei.entityType, opts))).pipe(
+          map((states) => ({ entities, validationErrors: states.flatMap((s) => s.errors), pending: states.some((s) => s.pending) })),
         );
       }),
       shareReplay({ bufferSize: 1, refCount: true }),
@@ -338,10 +366,10 @@ export class ValidationService {
       const opts: ValidationOptions = { store: storeFromEntities(entities), ...options };
       const valid = entities.length ? this.entitiesPassingCondition(entities, opts) : [];
       if (valid.length === 0) {
-        return of({ entities, validationErrors: [] as ValidationError[] });
+        return of({ entities, validationErrors: [] as ValidationError[], pending: false });
       }
       return forkJoin(valid.map((ei) => this.validateModelAsync(ei.entity, ei.entityType, opts))).pipe(
-        map((results) => ({ entities, validationErrors: results.flat() })),
+        map((results) => ({ entities, validationErrors: results.flat(), pending: false })),
       );
     });
   }
