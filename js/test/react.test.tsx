@@ -5,7 +5,7 @@ import { Subject, delay, of } from 'rxjs';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { asyncValidator, createEntityStore, createValidationService } from '../src/index.js';
-import { ValidationProvider, useEntityStoreValidation, useValidation } from '../src/react/index.js';
+import { ValidationForm, ValidationProvider, useEntityStoreValidation, useFieldValidation, useValidation } from '../src/react/index.js';
 
 afterEach(cleanup);
 
@@ -131,5 +131,65 @@ describe('useValidation: the model as a whole', () => {
     });
     expect(result.current.messagesFor()).toEqual(['Not a good booking']);
     expect(result.current.messagesFor('reason')).toEqual([]);
+  });
+});
+
+describe('ValidationForm', () => {
+  const metadata = {
+    Booking: {
+      validators: [
+        {
+          name: 'expression',
+          propertyNames: ['startDate', 'endDate'],
+          context: { expression: 'model.startDate < model.endDate', messageTemplate: 'Start must be before end' },
+        },
+        { name: 'expression', context: { expression: "model.note !== 'bad'", messageTemplate: 'Not a good booking' } },
+      ],
+      properties: { note: { displayName: 'Note', validators: [{ name: 'maxLength', context: { maxLength: 3 } }] } },
+    },
+  };
+
+  function Field({ name }: { name?: string }) {
+    const { message } = useFieldValidation(name);
+    return <span data-testid={name ?? 'form'}>{message ?? ''}</span>;
+  }
+
+  it('validates the model once for its fields, finding the model type with the resolvers', () => {
+    const changes = new Subject<void>();
+    const booking = { kind: 'Booking', startDate: 5, endDate: 1, note: '' };
+    const service = createValidationService({ metadata, modelTypeResolvers: [(m) => (m as { kind?: string })?.kind] }).createScope(
+      createEntityStore({ entities: () => [{ entityType: 'Booking', entity: booking }], changes }),
+    );
+    render(
+      <ValidationProvider service={service}>
+        <ValidationForm model={booking} async={false}>
+          <Field name="startDate" />
+          <Field name="endDate" />
+          <Field name="note" />
+          <Field />
+        </ValidationForm>
+      </ValidationProvider>,
+    );
+    const text = (id: string) => screen.getByTestId(id).textContent;
+
+    expect(text('startDate')).toBe('Start must be before end');
+    expect(text('endDate')).toBe('Start must be before end');
+    expect(text('note')).toBe('');
+    expect(text('form')).toBe('');
+
+    // The model changed in place; the scope's store reports it.
+    act(() => {
+      booking.endDate = 10;
+      booking.note = 'bad';
+      changes.next();
+    });
+    expect(text('startDate')).toBe('');
+    expect(text('endDate')).toBe('');
+    expect(text('form')).toBe('Not a good booking');
+  });
+
+  it('gives fields outside a form no errors', () => {
+    render(<Field name="x" />);
+    expect(screen.getByTestId('x').textContent).toBe('');
   });
 });

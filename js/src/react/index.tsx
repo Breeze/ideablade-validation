@@ -90,10 +90,17 @@ const EMPTY: ValidationError[] = [];
  * Validates a model with the metadata rules, the whole model at once, so a field's errors include model-level rules
  * that name it and update whenever any value changes. Sync errors are computed during render; async errors arrive later
  * (`pending` is true meanwhile). Re-validates when `model`, `modelType` or `options.deps` change, and when the
- * service's entity store changes (`ValidationProvider`'s `entityStore`).
+ * service's entity store changes (see {@link useValidationScope}).
+ *
+ * Without a `modelType`, the model type resolvers name it (such as `breezeModelType` for Breeze entities).
  */
-export function useValidation(model: unknown, modelType: string, options: UseValidationOptions = {}): UseValidationResult {
+export function useValidation(model: unknown, modelType?: string, options: UseValidationOptions = {}): UseValidationResult {
   const service = useValidationService();
+  const type = modelType ?? (model == null ? '' : service.resolveModelType(model));
+  if (model != null && !type) {
+    throw new Error('useValidation: pass a modelType, or register a model type resolver that recognizes the model.');
+  }
+  modelType = type ?? '';
   const optionsRef = useRef(options);
   optionsRef.current = options;
   const [version, setVersion] = useState(0);
@@ -144,6 +151,60 @@ export function useValidation(model: unknown, modelType: string, options: UseVal
       revalidate,
     };
   }, [errors, pending, revalidate]);
+}
+
+const ValidationFormContext = createContext<UseValidationResult | null>(null);
+
+export interface ValidationFormProps extends UseValidationOptions {
+  /** The model the form edits. */
+  model: unknown;
+  /** The model type; without it, the model type resolvers name it (such as `breezeModelType`). */
+  modelType?: string;
+  children?: ReactNode;
+}
+
+/**
+ * Validates a model once for all the fields inside it - the counterpart of the Angular form directive. A field reads
+ * the errors about its property with {@link useFieldValidation}: its rules, and model-level rules that name it, so a
+ * rule spanning two fields shows on both, and a change in one re-checks the other. Errors about the model as a whole
+ * are `useFieldValidation()` without a name.
+ *
+ * @example
+ * <ValidationForm model={address}>
+ *   <CityInput />   // useFieldValidation('city')
+ * </ValidationForm>
+ */
+export function ValidationForm({ model, modelType, children, ...options }: ValidationFormProps) {
+  const validation = useValidation(model, modelType, options);
+  return <ValidationFormContext.Provider value={validation}>{children}</ValidationFormContext.Provider>;
+}
+
+export interface FieldValidation {
+  /** The errors about the property. */
+  errors: ValidationError[];
+  /** Their messages. */
+  messages: string[];
+  /** The messages joined, or null when there are none: handy for an input's `error` or `title`. */
+  message: string | null;
+  invalid: boolean;
+}
+
+const NO_FORM: FieldValidation = { errors: EMPTY, messages: [], message: null, invalid: false };
+
+/**
+ * The errors about `propertyName` in the nearest {@link ValidationForm}; without a name, the errors about the model as a
+ * whole. Outside a `ValidationForm`, there are none.
+ */
+export function useFieldValidation(propertyName?: string): FieldValidation {
+  const form = useContext(ValidationFormContext);
+  return useMemo(() => {
+    if (!form) {
+      return NO_FORM;
+    }
+    const errors = form.errorsFor(propertyName);
+    const messages = errors.map((e) => e.errorMessage);
+    return { errors, messages, message: messages.length ? messages.join(' ') : null, invalid: errors.length > 0 };
+  }, [form, propertyName]);
 }
 
 /**

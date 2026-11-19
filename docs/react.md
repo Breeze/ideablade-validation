@@ -20,7 +20,7 @@ The provider accepts either `service={existingService}` or any option of `create
 
 If you have a dependency-injection container (InversifyJS, tsyringe, …), create the service there and pass `service`.
 
-## `useValidation(model, modelType, options?)`
+## `useValidation(model, modelType?, options?)`
 
 ```tsx
 function CustomerForm({ customer }: { customer: Customer }) {
@@ -58,6 +58,26 @@ The hook validates the whole model, so a rule spanning properties, such as "star
 ```tsx
 const { messagesFor } = useValidation(entity, 'Customer', { deps: [entity.email, entity.name] });
 ```
+
+Without a `modelType`, the registered [model type resolvers](concepts.md#resolvers) name the model, such as `breezeModelType` for Breeze entities: `useValidation(entity)`.
+
+## Forms: `<ValidationForm>` and `useFieldValidation(property?)`
+
+`ValidationForm` validates a model once for all the fields inside it, the counterpart of Angular's form directive. A field reads the errors about its property with `useFieldValidation`: its rules, and model-level rules that name it, so a rule spanning two fields shows on both, and a change in one re-checks the other.
+
+```tsx
+function TextField({ model, property }: { model: Customer; property: keyof Customer & string }) {
+  const { message, invalid } = useFieldValidation(property);
+  return <input value={model[property]} onChange={...} aria-invalid={invalid || undefined} title={message ?? undefined} />;
+}
+
+<ValidationForm model={customer}>
+  <TextField model={customer} property="email" />
+  <TextField model={customer} property="name" />
+</ValidationForm>
+```
+
+`ValidationForm` takes `model`, an optional `modelType`, and the options of `useValidation`. `useFieldValidation` returns `errors`, `messages`, `message` (the messages joined, or `null`) and `invalid`; without a property name, the errors about the model as a whole. Outside a `ValidationForm` there are none.
 
 ## Scopes: `useValidationScope(entityStore)`
 

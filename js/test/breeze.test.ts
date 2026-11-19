@@ -169,12 +169,12 @@ describe('breeze validator with Breeze 3 async validators', () => {
     const c = manager.createEntity('Customer', { id: 1, name: 'Too long name', email: 'taken@example.com' }) as Customer;
 
     expect(service.hasAsyncValidators('Customer')).toBe(true);
-    expect(service.validateModelSync(c, 'Customer').map((e) => e.key)).toEqual(['maxLength:name']);
+    expect(service.validateModelSync(c, 'Customer').map((e) => e.key)).toEqual(['maxLength_name']);
 
     const all = await firstValueFrom(service.validateModelAsync(c, 'Customer'));
     expect(all.map((e) => [e.key, e.propertyNames[0], e.errorMessage])).toEqual([
-      ['maxLength:name', 'name', "'name' must be a string with 5 characters or less"],
-      ['loginTaken:email', 'email', 'email is already taken'],
+      ['maxLength_name', 'name', "'name' must be a string with 5 characters or less"],
+      ['loginTaken_email', 'email', 'email is already taken'],
     ]);
 
     c.name = 'Ann';
@@ -198,9 +198,27 @@ describe('breeze validator with Breeze 3 async validators', () => {
 
     const results = await firstValueFrom(service.validate(c, 'Customer').pipe(toArray()));
     expect(results.map((r) => [r.pending, r.errors.map((e) => e.key)])).toEqual([
-      [true, ['maxLength:name']],
-      [false, ['maxLength:name', 'loginTaken:email']],
+      [true, ['maxLength_name']],
+      [false, ['maxLength_name', 'loginTaken_email']],
     ]);
+  });
+
+  it("records nothing on the entity, so it can run while a UI renders", async () => {
+    const { manager } = makeAsyncManager();
+    const service = createValidationService({ metadata: breezeOnly, validators: [breezeValidator] });
+    const c = manager.createEntity('Customer', { id: 1, name: 'Ann', email: 'a@b.co' }) as Customer;
+    c.entityAspect.clearValidationErrors();
+    let events = 0;
+    c.entityAspect.validationErrorsChanged.subscribe(() => events++);
+    c.setProperty('name', 'Too long name');
+    events = 0;
+    c.entityAspect.clearValidationErrors();
+    events = 0;
+
+    expect(service.validateModelSync(c, 'Customer').map((e) => e.key)).toEqual(['maxLength_name']);
+    await firstValueFrom(service.validateModelAsync(c, 'Customer'));
+    expect(c.entityAspect.getValidationErrors()).toEqual([]);
+    expect(events).toBe(0);
   });
 
   it('ignores non-entities', async () => {
@@ -217,7 +235,7 @@ describe('breeze validator together with installBreezeValidators', () => {
     const c = manager.createEntity('Customer', { id: 1, name: 'Too long name', email: 'nope' }) as Customer;
 
     const keys = service.validateModelSync(c, 'Customer').map((e) => e.key);
-    expect(keys.sort()).toEqual(['email_email', 'maxLength:name']);
+    expect(keys.sort()).toEqual(['email_email', 'maxLength_name']);
   });
 });
 

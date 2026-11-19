@@ -20,9 +20,9 @@ createValidationService({ metadata, validators: [breezeValidator] });
 { "global": { "validators": ["breeze"] } }
 ```
 
-The validator calls `entity.entityAspect.validateEntity()` and maps each Breeze `ValidationError` to a framework `ValidationError`:
+The validator runs the entity's Breeze validators itself - each property's, then the entity type's - and maps each Breeze `ValidationError` to a framework `ValidationError`. It never calls `validateEntity()`: nothing is recorded on the entity and no Breeze event is raised, so it's safe to run while a UI renders, and the entity's own validation state stays Breeze's.
 
-- the key, property name and message come from Breeze;
+- the property name and message come from Breeze, and the key is `<validator>_<property>`, such as `maxLength_name`;
 - the `displayName` comes from your metadata when present;
 - `context.breezeError` holds the original error.
 
@@ -30,7 +30,7 @@ Non-entities are ignored.
 
 ### On form fields
 
-A form validates a view of the entity that holds the fields' values. On such a view, `breeze` runs every property's Breeze validators, and Breeze's entity-level ones, on the view's values, without changing the entity's Breeze errors. Its errors are `ValidationError`s about their property, so a field bound to `customer.name` shows Breeze's `maxLength` next to the metadata's own rules for `name`:
+A form validates a view of the entity that holds the fields' values. `breeze` runs the same validators on the view's values, the ones being typed. Its errors are `ValidationError`s about their property, so a field bound to `customer.name` shows Breeze's `maxLength` next to the metadata's own rules for `name`:
 
 ```html
 <form [validationModel]="customer">
@@ -57,11 +57,11 @@ The single `"breeze"` entry covers them too. It follows the framework's rules fo
 
 | Call | Runs | Breeze call |
 |---|---|---|
-| `validateModelSync` | Breeze's sync validators | `validateEntity()` |
-| `validateModelAsync` | all of Breeze's validators, sync and async, each once | `validateEntityAsync()` |
-| `validate()`, `useValidation`, Angular signals | sync errors first (`pending: true`), then all errors | both |
+| `validateModelSync` | Breeze's sync validators |
+| `validateModelAsync` | all of Breeze's validators, sync and async, each once |
+| `validate()`, `useValidation`, Angular signals | sync errors first (`pending: true`), then all errors |
 
-That's the same split Breeze makes itself: `validateEntityAsync()` is Breeze's complete check, the one it runs on save.
+That's the same split Breeze makes itself: its async validators run in `validateEntityAsync()`, its complete check, the one it runs on save.
 
 The `breeze` validator skips errors from validators that `installBreezeValidators` added (section 2), so you can use both directions together without seeing the metadata rules twice.
 
