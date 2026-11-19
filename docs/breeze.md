@@ -28,6 +28,8 @@ The validator runs the entity's Breeze validators itself - each property's, then
 
 Non-entities are ignored.
 
+> **In TempHire:** [`validation.metadata.json`](https://github.com/Breeze/temphire.angular/blob/master/server/TempHire.Server/Validation/validation.metadata.json) starts with `{ "global": { "validators": ["breeze"] } }`, and the client registers `breezeValidator` in [`app.config.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/app.config.ts).
+
 ### On form fields
 
 A form validates a view of the entity that holds the fields' values. `breeze` runs the same validators on the view's values, the ones being typed. Its errors are `ValidationError`s about their property, so a field bound to `customer.name` shows Breeze's `maxLength` next to the metadata's own rules for `name`:
@@ -48,6 +50,8 @@ There's no Breeze on a .NET server, but Breeze's rules come from the server mode
 ```csharp
 services.AddIdeaBladeValidation(v => v.AddMetadataFile("validation.metadata.json").AddDataAnnotations("breeze"));
 ```
+
+> **In TempHire:** [`Program.cs`](https://github.com/Breeze/temphire.angular/blob/master/server/TempHire.Server/Program.cs) registers `AddDataAnnotations("breeze")`.
 
 ### Breeze async validators
 
@@ -89,6 +93,8 @@ Inside these validators, `store(type)` returns the live entities of that type in
 
 `uninstall()` removes the validators. Breeze keeps errors that removed validators already recorded, so call `entityAspect.clearValidationErrors()` if needed.
 
+> **In TempHire:** [`entity-manager-provider.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/core/services/entity-manager-provider.ts) loads the validation metadata at sign-in, next to Breeze's, and installs it with `installBreezeValidators`.
+
 ## 3. Validating a whole EntityManager (`breezeEntityStore`)
 
 ```ts
@@ -107,6 +113,8 @@ The store:
 
 Model conditions, `findEntity(id, type)` and the `unique` validator all work against the manager's cache.
 
+> **In TempHire:** each unit of work exposes `breezeEntityStore(manager)` as its `entityStore` ([`unit-of-work.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/core/services/unit-of-work.ts)).
+
 ## Model type names
 
 The model type is `entity.entityType.shortName`. Use the same names as keys in your metadata, and on the server, where the .NET library uses the CLR type name by default.
@@ -118,6 +126,8 @@ createValidationService({ metadata, validators: [breezeValidator], modelTypeReso
 // Angular: provideValidation({ metadata, validators: [breezeValidator], modelTypeResolvers: [breezeModelType] })
 ```
 
+> **In TempHire:** [`app.config.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/app.config.ts) registers `breezeModelType`, so the entity editors never name a model type.
+
 ## Single entities and forms: the manager as the entity store
 
 `store(type)` in expressions, and the `unique` validator that depends on it, need to see an entity's siblings. Give the validation service of the scope its `EntityManager` as its [entity store](concepts.md#scopes-a-service-and-its-entity-store): single entities and forms validated by that service then see the manager's live entities (without deleted or detached ones), and the forms re-validate when anything in the manager changes.
@@ -127,6 +137,8 @@ const scoped = service.createScope(breezeEntityStore(unitOfWork.manager));
 // Angular, in a route's or component's providers:
 provideValidationScope(() => breezeEntityStore(inject(UnitOfWork).manager));
 ```
+
+> **In TempHire:** the resource management route's scope uses the entity store of the unit of work it shows: [`resource-mgt.component.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/resource-mgt/resource-mgt.component.ts) (Angular), [`ResourceMgt.tsx`](https://github.com/Breeze/temphire.react/blob/main/client/src/app/resource-mgt/ResourceMgt.tsx) (React).
 
 ## Rules for view models (`breezeRuleSource`)
 
@@ -164,3 +176,5 @@ For each referenced property, `breezeRuleSource` supplies:
 - **Breeze's display name** for the property, used when the metadata doesn't set one.
 
 It knows every property of every entity type in the store, including properties without validators, so a mistyped `from` is still reported as an error. Entities themselves aren't affected: they keep using the `breeze` validator.
+
+> **In TempHire:** `ResourceName` is declared in [`client-validation-metadata.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/core/validation/client-validation-metadata.ts), the rule source is registered in [`app.config.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/app.config.ts), and the name editor is [`resource-name-editor.component.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/resource-mgt/resource-name-editor.component.ts) (Angular) and [`ResourceNameEditor.tsx`](https://github.com/Breeze/temphire.react/blob/main/client/src/app/resource-mgt/ResourceNameEditor.tsx) (React).

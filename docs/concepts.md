@@ -93,6 +93,8 @@ The framework doesn't know what kind of store it is; every store has the same sh
 | Angular | `provideValidationScope(() => entityStore)` in a route's or component's providers; `inject(ValidationService).setEntityStore(...)` |
 | React | `useValidationScope(entityStore)`, passed to a nested `<ValidationProvider service={...}>` |
 
+> **In TempHire:** the resource management route has its own scope, for the unit of work it shows. In Angular, [`resource-mgt.component.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/resource-mgt/resource-mgt.component.ts) provides it with `provideValidationScope()` and moves it to another unit of work with `setEntityStore`; in React, [`ResourceMgt.tsx`](https://github.com/Breeze/temphire.react/blob/main/client/src/app/resource-mgt/ResourceMgt.tsx) creates it with `useValidationScope`. The scope's `validateEntityStore()` keeps its Save button and the "at least one address" alert current.
+
 ## Rules that span properties
 
 A model-level rule can be about several properties, such as "the start date is before the end date". Name them with `propertyNames` in the metadata, and the error reports them:
@@ -115,6 +117,8 @@ A model-level rule can be about several properties, such as "the start date is b
 
 The form integrations validate the whole model, with the current values of all fields, whenever any field changes. Each field shows the errors about its property, so both dates show the rule above, and a change in one re-checks the other. A rule whose `condition` reads another field is re-checked the same way. Errors about no property are the form's own: `modelErrors` on Angular's form directive, and `errorsFor()` without a name in React.
 
+> **In TempHire:** "a staffing resource is at least 18 years old when hired" names `dateOfBirth` and `hireDate` (`ADULT_WHEN_HIRED` in [`validation.metadata.json`](https://github.com/Breeze/temphire.angular/blob/master/server/TempHire.Server/Validation/validation.metadata.json)). Both date fields show it, and the summary card shows its message once, under the dates: [`resource-summary.component.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/resource-mgt/resource-summary.component.ts) (Angular), [`ResourceSummary.tsx`](https://github.com/Breeze/temphire.react/blob/main/client/src/app/resource-mgt/ResourceSummary.tsx) (React).
+
 ## Rule sources
 
 Not every rule lives in the validation metadata. Data frameworks keep their own: Breeze builds `required` and `maxLength` validators from the server model's `[Required]` and `[StringLength]` attributes, and an ORM or a schema registry knows column lengths. For entities that's fine when a validator already runs those rules on the entity, as the `breeze` validator does for Breeze entities. A **view model** that edits some of an entity's properties has no such link.
@@ -134,6 +138,8 @@ With Breeze's rule source registered, for example, `PersonName.firstName` gets B
 | Validators | The returned entries refer to validators by name. A rule source lists the factories it needs in `validators`, and they're registered along with the metadata. |
 | When it's asked | Only for `from` references. Entities keep their own rules, so nothing is reported twice. |
 | Order | Rule sources first, then the metadata's own rules for the referenced property, then the inheriting property's own settings. Later settings win, so the metadata can rename (`displayName`) or add to what a rule source supplies. |
+
+> **In TempHire:** the name editor edits a `ResourceName` view model whose properties inherit `StaffingResource`'s Breeze rules with `from` ([`client-validation-metadata.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/core/validation/client-validation-metadata.ts)), through `breezeRuleSource`, registered in [`app.config.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/app.config.ts).
 
 ### Writing your own
 
@@ -298,6 +304,8 @@ async function save() {
 A resolver should read the model's properties, as above, rather than look the object up by identity: forms validate a view of the model ([Resolvers](#resolvers)). A validator that reports several errors at once, each about its own property, as `breeze` does, implements `Validator` and returns an array of `ValidationError`s ([validators.md](validators.md#writing-a-validator)).
 
 Angular and React register the same pieces through their providers (`provideValidation`, `provideValidationScope`, `<ValidationProvider>`, `useValidationScope`), and Angular's `signalEntityStore` is another ready-made entity store. On .NET, the extension points are `IValidationEntityStore` and `IValidationEntityTypeLookup` ([dotnet.md](dotnet.md#entity-stores)), the `ModelTypeResolver` option, `IValidationRuleSource`, and `ValidatorFactory`. Nothing there depends on Breeze: `DataAnnotationsValidator` runs the data annotations of any CLR object ([dotnet.md](dotnet.md#data-annotations)).
+
+> **In TempHire:** a complete integration with Breeze on both sides. On the client, [`app.config.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/app.config.ts) registers the validator, the model type resolver and the rule source, [`entity-manager-provider.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/core/services/entity-manager-provider.ts) installs the rules into Breeze, and [`unit-of-work.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/core/services/unit-of-work.ts) gives each unit of work its entity store. The server validates every save with an entity store of its own, built for its model: see [Validating a save](dotnet.md#validating-a-save).
 
 ## Sync vs. async
 

@@ -18,6 +18,8 @@ The expression scope is made up of:
 - Functions/values registered globally: `expressionScope` (TS options), `provideExpressionScope` (Angular), `ExpressionScope` (.NET).
 - Per-call `options.expressionScope`.
 
+> **In TempHire:** the rules in [`validation.metadata.json`](https://github.com/Breeze/temphire.angular/blob/master/server/TempHire.Server/Validation/validation.metadata.json) use `store(type)` across entities, `store('Address').some(a => a.staffingResourceId === model.id)`, and `new Date(...)` with `getFullYear()` for an age check. The client gets `store` from its unit of work's entity store, and the server from the store it builds for each save ([Validating a save](dotnet.md#validating-a-save)).
+
 ## Supported syntax
 
 | Feature | Examples |

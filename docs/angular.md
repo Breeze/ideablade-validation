@@ -51,6 +51,8 @@ Feature areas can add metadata with `provideValidationMetadata(featureMetadata)`
 | `provideRuleSources(...sources)` | Adds rule sources for `from` references; a function may `inject()` (also `ruleSources` in `provideValidation`). |
 | Tokens | `VALIDATION_METADATA`, `VALIDATOR_FACTORY`, `VALIDATOR_CONTEXT_PROVIDER`, `VALIDATION_EXPRESSION_SCOPE`, `VALIDATION_EXPRESSION_EVALUATOR`, `VALIDATION_SERVICE_OPTIONS`, `VALIDATION_MODEL_TYPE_RESOLVER`, `VALIDATION_RULE_SOURCE`. |
 
+> **In TempHire:** [`app.config.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/app.config.ts) sets the service up with the client's view-model metadata and the Breeze validator, model type resolver and rule source. The server's metadata is added at sign-in, when [`entity-manager-provider.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/core/services/entity-manager-provider.ts) loads it next to Breeze's.
+
 ## Scopes
 
 A validation service has one entity store, and shares its scope: one service for an app with one global unit of work, one per route for a unit of work per route ([concepts.md](concepts.md#scopes-a-service-and-its-entity-store)). `provideValidationScope` gives a route or component its own service, with the same metadata and options as the app's:
@@ -76,6 +78,8 @@ readonly canSave = computed(() => {
   return this.unitOfWork.hasChanges() && !!result && !result.pending && result.validationErrors.length === 0;
 });
 ```
+
+> **In TempHire:** [`resource-mgt.component.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/resource-mgt/resource-mgt.component.ts) has `provideValidationScope()` in its providers, and an `effect` that calls `setEntityStore` whenever it switches to another unit of work. Its Save button reacts to `toSignal(validation.validateEntityStore())`, and the address and phone lists ([`resource-address-list.component.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/resource-mgt/sections/resource-address-list.component.ts)) show the resource's rules from the same validation.
 
 ## Using the service
 
@@ -167,6 +171,8 @@ export class NameEditorComponent {
 
 A view model whose properties inherit an entity's rules with [`from`](metadata.md#inheriting-a-propertys-rules-from) gets the entity's Breeze rules in a Signal Form, with no rules restated. See [breeze.md](breeze.md#rules-for-view-models-breezerulesource).
 
+> **In TempHire:** the name editor, [`resource-name-editor.component.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/resource-mgt/resource-name-editor.component.ts), is a Signal Form over a `ResourceName` view model, validated with `validateWithMetadata`.
+
 ## Reactive forms
 
 `validateFormGroup` validates a form group as a whole, as the template-driven directives do ([below](#template-driven-forms)): each control's errors come from validating the model with all the group's current values, and a change in one control re-checks the others. Control names are property names.
@@ -236,6 +242,8 @@ Errors about the model as a whole are the form's: `#form="validationForm"` expos
 | `validationPropertyName` | field | The control's `name`. |
 | `validationGroup` | `<form>` or field | The form's; without one, only validators without a group run. |
 | `validationContext` | `<form>` or field | The form's. |
+
+> **In TempHire:** every entity editor is a template-driven form. [`resource-address-list.component.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/resource-mgt/sections/resource-address-list.component.ts) makes each address card a form with `ngForm [validationModel]="address"`, [`resource-summary.component.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/resource-mgt/resource-summary.component.ts) uses `#form="validationForm"` to show a rule about two dates once, and [`field-errors.directive.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/core/validation/field-errors.directive.ts) shows a field's errors as its `title`, on hover.
 
 ### Resolvers
 

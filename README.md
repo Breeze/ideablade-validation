@@ -97,6 +97,10 @@ var errors = validationService.ValidateModel(customer);
 | [Angular](docs/angular.md) · [React](docs/react.md) · [.NET](docs/dotnet.md) | Integrations |
 | [Integrating your data layer](docs/concepts.md#integrating-your-data-layer) · [Breeze](docs/breeze.md) | Connecting any persistence layer, and the ready-made Breeze integration |
 
+## Example app: TempHire
+
+[TempHire](https://github.com/Breeze/temphire.angular) is a staffing app that uses this framework end to end, in an [Angular](https://github.com/Breeze/temphire.angular) and a [React](https://github.com/Breeze/temphire.react) version with the same .NET server. Its rules are a JSON metadata file plus the server model's data annotations. The client installs them into Breeze, validates each unit of work continuously and shows the errors in its forms; the server checks every save against the database as it will be after the save. The documentation links to the code that does each part, marked **In TempHire**, and each version's README explains its validation in a section of its own.
+
 ## Repository layout
 
 ```

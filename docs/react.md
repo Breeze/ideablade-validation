@@ -20,6 +20,8 @@ The provider accepts either `service={existingService}` or any option of `create
 
 If you have a dependency-injection container (InversifyJS, tsyringe, …), create the service there and pass `service`.
 
+> **In TempHire:** [`app-services.tsx`](https://github.com/Breeze/temphire.react/blob/main/client/src/app/core/services/app-services.tsx) creates the service with the Breeze validator, model type resolver and rule source, and [`main.tsx`](https://github.com/Breeze/temphire.react/blob/main/client/src/main.tsx) provides it with `<ValidationProvider>`.
+
 ## `useValidation(model, modelType?, options?)`
 
 ```tsx
@@ -79,6 +81,8 @@ function TextField({ model, property }: { model: Customer; property: keyof Custo
 
 `ValidationForm` takes `model`, an optional `modelType`, and the options of `useValidation`. `useFieldValidation` returns `errors`, `messages`, `message` (the messages joined, or `null`) and `invalid`; without a property name, the errors about the model as a whole. Outside a `ValidationForm` there are none.
 
+> **In TempHire:** [`EntityFields.tsx`](https://github.com/Breeze/temphire.react/blob/main/client/src/app/core/validation/EntityFields.tsx) has the inputs, each showing its property's errors with `useFieldValidation`. [`ResourceAddressList.tsx`](https://github.com/Breeze/temphire.react/blob/main/client/src/app/resource-mgt/sections/ResourceAddressList.tsx) wraps each address card in `<ValidationForm model={address}>`, and [`ResourceSummary.tsx`](https://github.com/Breeze/temphire.react/blob/main/client/src/app/resource-mgt/ResourceSummary.tsx) shows a rule about two dates once.
+
 ## Scopes: `useValidationScope(entityStore)`
 
 A validation service has one entity store, the entities of its scope, such as a unit of work's ([concepts.md](concepts.md#scopes-a-service-and-its-entity-store)). `useValidationScope` returns a service with the nearest provider's metadata and options and its own store; provide it to the components of the scope:
@@ -92,6 +96,8 @@ function OrderEditor({ unitOfWork }: { unitOfWork: UnitOfWork }) {
 ```
 
 `store(type)` and `unique` then see the store's entities, and `useValidation` re-validates when they change. The store can be any [entity store](concepts.md#writing-an-entity-store): Breeze's, as here, or one built with `createEntityStore` for your own data layer.
+
+> **In TempHire:** [`ResourceMgt.tsx`](https://github.com/Breeze/temphire.react/blob/main/client/src/app/resource-mgt/ResourceMgt.tsx) creates the route's scope with `useValidationScope(unitOfWork?.entityStore)` and provides it to the detail sections.
 
 ## `useEntityStoreValidation(store?, options?)`
 
@@ -112,7 +118,11 @@ return <ErrorList errors={result?.validationErrors ?? []} />;
 
 Memoize the store: a new store object restarts validation. `null` validates nothing.
 
+> **In TempHire:** the address and phone lists ([`ResourceAddressList.tsx`](https://github.com/Breeze/temphire.react/blob/main/client/src/app/resource-mgt/sections/ResourceAddressList.tsx)) call `useEntityStoreValidation()` to show the resource's rules. [`ResourceMgt.tsx`](https://github.com/Breeze/temphire.react/blob/main/client/src/app/resource-mgt/ResourceMgt.tsx) creates the scope, so it isn't under the scope's provider: it subscribes to the same shared validation with `useObservable(() => validation.validateEntityStore(), ...)` for its Save button.
+
 ## Lower-level hooks
 
 - `useValidationService()` returns the service. Use it for imperative validation, for example on submit: `service.validateModelSync(model, type)`.
 - `useObservable(() => observable$, initial, deps)` subscribes to any Observable.
+
+> **In TempHire:** the name editor, [`ResourceNameEditor.tsx`](https://github.com/Breeze/temphire.react/blob/main/client/src/app/resource-mgt/ResourceNameEditor.tsx), uses Mantine's `useForm` and validates with `validateModelSync(values, 'ResourceName')`, mapping the errors to fields by `propertyNames`.
