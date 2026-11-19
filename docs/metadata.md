@@ -51,6 +51,8 @@ Metadata is JSON. It's usually generated on the server or authored per feature, 
 
 The global `breeze` validator in this example comes from the optional [Breeze integration](breeze.md). Without Breeze, leave it out, or reference your own data layer's validator instead ([Integrating your data layer](concepts.md#integrating-your-data-layer)).
 
+> **In TempHire:** [`validation.metadata.json`](https://github.com/Breeze/temphire.angular/blob/master/server/TempHire.Server/Validation/validation.metadata.json) is the metadata of a real app: U.S. addresses, phone number formats, rates, dates, and rules across entities such as "a staffing resource has at least one address" (`store('Address')`) and "is at least 18 years old when hired" (`propertyNames`). The client adds metadata for its own view models in [`client-validation-metadata.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/core/validation/client-validation-metadata.ts).
+
 ## Top level
 
 | Key | Meaning |
@@ -154,6 +156,8 @@ Either one is enough. When both know the property, you get the rules of both: fi
 - **You can only add, not remove.** To skip an inherited rule for a particular validation, filter it out with a `predicate`.
 - **Conditions and expressions** that come with the inherited rules run against *this* model. A rule that reads `model.x` sees this model's `x`, or `undefined` if it has none.
 - **Errors:** a reference that neither the metadata nor any rule source knows, and a circular chain, both throw a `ValidationConfigurationError` when the property is first validated.
+
+> **In TempHire:** the name editor's `ResourceName` inherits each name's rules with `"from": "StaffingResource"` ([`client-validation-metadata.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/core/validation/client-validation-metadata.ts)). `StaffingResource` has no metadata entry for its names: the rules come from Breeze, through `breezeRuleSource`.
 
 ## Message templates
 

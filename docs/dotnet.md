@@ -41,6 +41,8 @@ builder.Services.AddIdeaBladeValidation(v => v
 
 Lifetimes: `ValidationMetadata` and the expression evaluator are singletons. `ValidationService` is **scoped**, so context providers can depend on the request's services.
 
+> **In TempHire:** [`Program.cs`](https://github.com/Breeze/temphire.angular/blob/master/server/TempHire.Server/Program.cs) registers the service with the app's [`validation.metadata.json`](https://github.com/Breeze/temphire.angular/blob/master/server/TempHire.Server/Validation/validation.metadata.json) and the data annotations, and [`ValidationController`](https://github.com/Breeze/temphire.angular/blob/master/server/TempHire.Server/Controllers/ValidationController.cs) serves the same metadata to the client, so both sides check the same rules.
+
 ## Validating
 
 ```csharp
@@ -87,6 +89,55 @@ var errors = await validation.ValidateEntitiesAsync(new ValidationEntityStore(li
 
 Implement `IValidationEntityStore` (`Entities`), plus `IValidationEntityTypeLookup` (`GetEntities(type)`) for a fast `store(type)`, to validate other sources such as an EF change tracker.
 
+## Validating a save
+
+The server is where a save has to be checked, whatever the client already checked. That raises a question the client never faces: what does the save get checked *against*?
+
+### A save holds only what changed
+
+A save request, whether it's a Breeze save bundle, a DTO graph or an EF change tracker, carries the entities the client added, modified or deleted. The parent of a changed child, its siblings, and its other children aren't in it unless they changed too. Rules about related entities need them all the same:
+
+- "An order has at least one line" reads the order's lines (`store('OrderLine')`). A save that deletes one line holds only that line.
+- `unique` compares a value with the other entities of its type.
+- Model `condition`s and `findEntity(id, type)` look up other entities.
+
+Validating only the entities in the save would miss these rules, or worse, pass them against an incomplete picture. A save that deletes an order's last line, and nothing else, would go through.
+
+### Validate the database as it will be after the save
+
+So before validating, load what the rules read, and apply the save on top. An entity store for the save does both:
+
+- **`Entities`**, what gets validated: the added and modified entities, plus the stored entities whose rules the save may affect, such as the order whose line is being deleted.
+- **`GetEntities(type)`**, behind `store(type)`: the stored rows of that type that the rules may read, for the entities concerned, with the save applied. Deleted rows are taken out, and added and modified ones replace or join the stored ones.
+
+```csharp
+sealed class SaveValidationStore : IValidationEntityStore, IValidationEntityTypeLookup
+{
+    // Reads everything the rules may need up front, asynchronously: rules call store(type)
+    // while they evaluate, and that can't wait for a query.  Read untracked, so the rows
+    // don't collide with the entities the ORM is about to save.
+    public static async Task<SaveValidationStore> CreateAsync(AppDbContext db, SaveRequest save, CancellationToken ct) { ... }
+
+    public IReadOnlyList<object> Entities { get; }                 // changed entities + affected parents
+    public IEnumerable<object> GetEntities(string entityType) { ... }  // stored rows, with the save applied
+}
+
+var store = await SaveValidationStore.CreateAsync(db, save, ct);
+var errors = await validation.ValidateEntitiesAsync(store, cancellationToken: ct);
+```
+
+The rules then run against **the database as it will be after the save**, not as the client saw it when it loaded the data. That's what keeps the data consistent when several people edit it at once. Another user may have changed or deleted records in the meantime, and the client can't know. Say an order has two lines, and two users each delete a different one. On each user's screen one line remains, so both saves pass on the client. The first save goes through. The second deletes a line nobody else touched, so an optimistic concurrency check (a row version on each row) has nothing to catch: it covers the rows in the save, not the rows a rule reads. Checked against the database, though, the order would be left with no lines, and the server refuses the save.
+
+Concurrency checks and save validation complement each other. Neither serializes two saves that run at exactly the same moment, because both read the database before either writes. Closing that gap takes a database constraint, or a serializable transaction around validating and writing.
+
+### This is your code, not the framework's
+
+The framework knows the rules, not your model. To it, `store('OrderLine')` is a name to look up. Which lines belong to which order, which stored entities a save can affect, and how to load them from your database are knowledge of your model and your data layer. So the save's entity store is application code, and it has to keep up with the rules: a new rule that reads other entities may need more loaded.
+
+That knowledge is in two places an AI coding assistant can read: the rules (`store(type)`, `findEntity`, `unique` and conditions in the metadata) and the model. An assistant such as Claude can write the store from them, and check it again whenever the rules change. Writing it around an aggregate, such as an order and all of its lines, instead of rule by rule keeps those changes rare: a new rule within the aggregate needs nothing new.
+
+> **In TempHire:** every save is validated this way. [`SaveValidationStore`](https://github.com/Breeze/temphire.angular/blob/master/server/TempHire.Server/Persistence/SaveValidationStore.cs) loads the staffing resources a save concerns and all of their children, and [`TempHirePersistenceManager`](https://github.com/Breeze/temphire.angular/blob/master/server/TempHire.Server/Persistence/TempHirePersistenceManager.cs) runs the rules on it before Breeze saves. Its README explains it in [Validation comes from the server](https://github.com/Breeze/temphire.angular#validation-comes-from-the-server).
+
 ## Data annotations
 
 `DataAnnotationsValidator` runs a model's data annotations (`[Required]`, `[StringLength]`, any `ValidationAttribute`, and `IValidatableObject`) as a model-level validator. It works on any CLR object and doesn't depend on Breeze. Each failure is a `ValidationError` like any other: its key is named after the attribute (`required_City`, `stringLength_Zipcode`), its property is the CLR property, and its message is the annotation's own.
@@ -98,6 +149,8 @@ services.AddIdeaBladeValidation(v => v
     .AddMetadataFile("validation.metadata.json")   // { "global": { "validators": ["breeze"] }, ... }
     .AddDataAnnotations("breeze"));
 ```
+
+> **In TempHire:** [`validation.metadata.json`](https://github.com/Breeze/temphire.angular/blob/master/server/TempHire.Server/Validation/validation.metadata.json) has `{ "global": { "validators": ["breeze"] } }`, and [`TempHirePersistenceManager`](https://github.com/Breeze/temphire.angular/blob/master/server/TempHire.Server/Persistence/TempHirePersistenceManager.cs) turns the errors into the Breeze `EntityError`s a failed save reports to the client.
 
 ## Writing validators
 
