@@ -18,7 +18,7 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideValidation({
       metadata: validationMetadata,
-      validators: [breezeValidator],
+      validators: [breezeValidator],   // if you use Breeze; any validator factories go here
       asyncTimeout: 30_000,
       expressionScope: { today: () => new Date() },
     }),
@@ -63,6 +63,8 @@ A validation service has one entity store, and shares its scope: one service for
 }
 ```
 
+The store can be any [entity store](concepts.md#writing-an-entity-store): Breeze's, as here, `signalEntityStore`, or one you write for your own data layer.
+
 The forms in the scope validate in its store: `store(type)` and `unique` see its entities, and the fields re-validate when they change, such as an entity changed in code. When the scope moves on to another unit of work, `inject(ValidationService).setEntityStore(store)`.
 
 ## Using the service
@@ -82,7 +84,7 @@ export class OrderComponent {
 }
 ```
 
-Validate everything in a Breeze manager and show a live error list:
+Validate everything in an entity store, here a Breeze manager, and show a live error list:
 
 ```ts
 readonly result = toSignal(inject(ValidationService).validateEntityStore(breezeEntityStore(this.manager)));

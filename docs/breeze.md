@@ -2,6 +2,8 @@
 
 `@ideablade/validation/breeze` integrates with **breeze-client 3**, which is an optional peer dependency. Breeze isn't required for anything else in the library.
 
+This module is a ready-made integration, not a special case: it implements the core's generic, public extension points (an [entity store](concepts.md#writing-an-entity-store), a [model type resolver](concepts.md#resolvers), a [rule source](concepts.md#rule-sources) and a [validator](validators.md#writing-a-validator)) for Breeze. If your app uses another persistence layer, implement the same pieces for it; see [Integrating your data layer](concepts.md#integrating-your-data-layer).
+
 The integration works in both directions, and you can use either one or both together.
 
 ## 1. Breeze's validation inside this framework (`breeze` validator)

@@ -2,6 +2,8 @@
 
 `@ideablade/validation` (TypeScript) and `IdeaBlade.Validation` (.NET) validate **any object** against rules described in **JSON metadata**. The framework doesn't care where objects come from: Breeze entities, plain objects, view models, EF entities and DTOs all work. The same metadata runs in the browser and on the server.
 
+The core doesn't depend on any persistence layer either. What it needs from one, it gets through a few public extension points: an entity store, a model type resolver, and optionally rule sources and validators. `@ideablade/validation/breeze` is a ready-made implementation of those for Breeze, and any other data layer is integrated the same way ([Integrating your data layer](#integrating-your-data-layer)).
+
 ```
           JSON metadata                         Validator factories (DI)
  { "Customer": { "properties": {...} } }      required, email, range, ..., yours
@@ -23,7 +25,7 @@
 
 | Concept | What it is |
 |---|---|
-| **Model type** | A string that names the kind of object, such as `"Customer"`. Breeze uses `entityType.shortName`; .NET uses the CLR type name by default. Metadata is keyed by model type. Where code has only a model to go on, it asks the registered **model type resolvers**. Validations that have no store of their own ask the **store resolvers** for `store(type)`. See [Resolvers](#resolvers). |
+| **Model type** | A string that names the kind of object, such as `"Customer"`. Your data layer decides the names: Breeze's integration uses `entityType.shortName`; .NET uses the CLR type name by default. Metadata is keyed by model type. Where code has only a model to go on, it asks the registered **model type resolvers**. Validations that have no store of their own ask the **store resolvers** for `store(type)`. See [Resolvers](#resolvers). |
 | **Metadata** | JSON that lists, per model type, the model-level validators, property validators, conditions and inheritance (`extends`). A `global` section applies to all types. See [metadata.md](metadata.md). |
 | **Validator factory** | `{ name, fn(group, context) => Validator }`. You register factories through dependency injection (Angular providers, React provider props, .NET `IServiceCollection`) or as plain arrays. Metadata refers to validators by `name`. See [validators.md](validators.md). |
 | **Validator** | Validates one value. *Sync* validators return errors directly; *async* validators return an Observable (TS) or a Task (.NET). Several factories may share a name, one sync and one async; `"async": true` in metadata selects the async one. |
@@ -70,7 +72,7 @@ React's `useValidation(model, modelType)` takes the model type as an argument, s
 A validation service has one **entity store**: the entities of its scope, such as a unit of work's ([Writing an entity store](#writing-an-entity-store) shows the two shapes a store can have). The service and the store share that scope: an app with one global unit of work has one service; an app with a unit of work per route has a service per route.
 
 ```ts
-const service = createValidationService({ metadata, entityStore: breezeEntityStore(manager) });
+const service = createValidationService({ metadata, entityStore });   // any store, e.g. breezeEntityStore(manager)
 const scoped = service.createScope(otherStore);   // same metadata and options, its own store
 scoped.setEntityStore(nextStore);                  // the scope moved on to another unit of work
 ```
@@ -113,7 +115,7 @@ The form integrations validate the whole model, with the current values of all f
 
 ## Rule sources
 
-Not every rule lives in the validation metadata. Data frameworks keep their own: Breeze builds `required` and `maxLength` validators from the server model's `[Required]` and `[StringLength]` attributes, and an ORM or a schema registry knows column lengths. For entities that's fine, because the `breeze` validator runs those rules on the entity. A **view model** that edits some of an entity's properties has no such link.
+Not every rule lives in the validation metadata. Data frameworks keep their own: Breeze builds `required` and `maxLength` validators from the server model's `[Required]` and `[StringLength]` attributes, and an ORM or a schema registry knows column lengths. For entities that's fine when a validator already runs those rules on the entity, as the `breeze` validator does for Breeze entities. A **view model** that edits some of an entity's properties has no such link.
 
 A **rule source** makes those outside rules available to the metadata. A property declared with [`from`](metadata.md#inheriting-a-propertys-rules-from) inherits the rules of another model type's property. The metadata asks every registered rule source for that property's rules, and adds whatever they return in front of the rules the metadata itself has for it:
 
@@ -121,7 +123,7 @@ A **rule source** makes those outside rules available to the metadata. A propert
 { "PersonName": { "properties": { "firstName": { "from": "Person" }, "surname": { "from": "Person.lastName" } } } }
 ```
 
-With Breeze's rule source registered, `PersonName.firstName` gets Breeze's rules for `Person.firstName`, and the rules stay defined once, on the server model.
+With Breeze's rule source registered, for example, `PersonName.firstName` gets Breeze's rules for `Person.firstName`, and the rules stay defined once, on the server model.
 
 | | |
 |---|---|
@@ -232,6 +234,68 @@ Entity stores often change many times in a row. Breeze, for example, raises one 
 - `coalesce: false` validates on every single change.
 
 Set it for the service with `createValidationService({ coalesce })` (Angular: `provideValidation({ coalesce })`), or per call with `validateEntityStore(store, { coalesce })`.
+
+## Integrating your data layer
+
+The framework works with any persistence layer: Breeze, an ORM or a REST client, a GraphQL cache, NgRx, MobX, or plain objects in memory. The core never talks to a data layer directly. It asks for what it needs through a few public extension points, and an integration is just an implementation of them.
+
+`@ideablade/validation/breeze` is such an integration, ready-made for Breeze. It's built only on these extension points and on what the core exports, with no special access. Integrating another data layer takes the same pieces, and you only need the ones your app uses:
+
+| Extension point | What it tells the framework | Needed for | Core API | Breeze's implementation |
+|---|---|---|---|---|
+| **Entity store** | Which entities belong to the scope, and when they change | Validating a whole unit of work; `store(type)` and `unique`; forms that re-validate when the data changes | `EntityStore`, `createEntityStore` ([Writing an entity store](#writing-an-entity-store)); `createValidationService({ entityStore })`, `createScope`, `setEntityStore` ([Scopes](#scopes-a-service-and-its-entity-store)) | `breezeEntityStore(manager)` |
+| **Model type resolver** | Which model type, and so which metadata, an object has | Code that has only the model, such as Angular's template-driven forms and Signal Forms ([Resolvers](#resolvers)) | `ModelTypeResolver`, `modelTypeResolvers` | `breezeModelType` |
+| **Rule source** (optional) | Rules the data layer already knows, such as column lengths or required fields | View models that inherit an entity's rules with `from` ([Rule sources](#rule-sources)) | `RuleSource`, `ruleSources` | `breezeRuleSource(metadataStore)` |
+| **Validator** (optional) | The data layer's own validation, reported as `ValidationError`s | Running rules that live in the data layer on its entities, usually as a `global` validator | `ValidatorFactory`, `validators` ([validators.md](validators.md#writing-a-validator)) | `breezeValidator` (named `breeze`) |
+| **Save pipeline** | That entities are valid before they're saved | Blocking a save with errors | `validateEntityStoreOneTime(store)`, `validateEntities(list)`, `validateModelAsync(model, type)`; or call the service from the data layer's own validation hook | `installBreezeValidators(metadataStore, service)` adds the rules to Breeze's validation, which runs on save |
+
+A sketch for a simple in-memory data layer whose entities carry their type in a `$type` property:
+
+```ts
+import { createEntityStore, createValidationService, syncValidator, type ModelTypeResolver } from '@ideablade/validation';
+import { firstValueFrom } from 'rxjs';
+
+// Your data layer, for example:
+interface Db {
+  all(): { $type: string }[];
+  onChange(listener: () => void): () => void;   // returns a function that stops listening
+  isValid(entity: object): boolean;             // its own validation, if it has any
+  save(): Promise<void>;
+}
+declare const db: Db;
+
+// Entity store: the entities of the scope, and when they change.
+const entityStore = createEntityStore({
+  entities: () => db.all().map((entity) => ({ entityType: entity.$type, entity })),
+  changes: (notify) => db.onChange(notify),
+  getEntities: (type) => db.all().filter((entity) => entity.$type === type),   // optional fast store(type)
+});
+
+// Model type resolver: read the type from the model; return undefined for objects it doesn't know.
+const dbModelType: ModelTypeResolver = (model) => (model as { $type?: string } | null)?.$type;
+
+// Optional validator for the data layer's own rules. Reference it as { "global": { "validators": ["db"] } }.
+const dbValidator = syncValidator('db', (model) => !model?.$type || db.isValid(model), 'The record is invalid');
+
+const service = createValidationService({
+  metadata,
+  entityStore,
+  modelTypeResolvers: [dbModelType],
+  validators: [dbValidator],
+  // ruleSources: [columnRules],   // optional, see Rule sources
+});
+
+// Save pipeline: validate everything once, sync and async, then save.
+async function save() {
+  const { validationErrors } = await firstValueFrom(service.validateEntityStoreOneTime(entityStore));
+  if (validationErrors.length) throw new Error(validationErrors.map((e) => e.errorMessage).join('\n'));
+  await db.save();
+}
+```
+
+A resolver should read the model's properties, as above, rather than look the object up by identity: forms validate a view of the model ([Resolvers](#resolvers)). A validator that reports several errors at once, each about its own property, as `breeze` does, implements `Validator` and returns an array of `ValidationError`s ([validators.md](validators.md#writing-a-validator)).
+
+Angular and React register the same pieces through their providers (`provideValidation`, `provideValidationScope`, `<ValidationProvider>`, `useValidationScope`), and Angular's `signalEntityStore` is another ready-made entity store. On .NET, the extension points are `IValidationEntityStore` and `IValidationEntityTypeLookup` ([dotnet.md](dotnet.md#entity-stores)), the `ModelTypeResolver` option, `IValidationRuleSource`, and `ValidatorFactory`. Nothing there depends on Breeze: `DataAnnotationsValidator` runs the data annotations of any CLR object ([dotnet.md](dotnet.md#data-annotations)).
 
 ## Sync vs. async
 

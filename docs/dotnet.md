@@ -4,6 +4,7 @@
 
 - Targets `netstandard2.0` (.NET Framework 4.6.2+), `net8.0` and `net10.0`.
 - Dependencies: `System.Text.Json`, `Microsoft.Extensions.DependencyInjection.Abstractions`, plus `Microsoft.Bcl.AsyncInterfaces` on netstandard2.0 only.
+- Works with any persistence layer: it validates any CLR object (POCOs, DTOs, EF entities, a save bundle) and doesn't depend on Breeze or an ORM. Your data layer plugs in through the [model type resolver](#model-type-names), [entity stores](#entity-stores), rule sources (`IValidationRuleSource`) and validators ([concepts.md](concepts.md#integrating-your-data-layer)).
 
 ```
 dotnet add package IdeaBlade.Validation
@@ -88,9 +89,9 @@ Implement `IValidationEntityStore` (`Entities`), plus `IValidationEntityTypeLook
 
 ## Data annotations
 
-`DataAnnotationsValidator` runs a model's data annotations (`[Required]`, `[StringLength]`, any `ValidationAttribute`, and `IValidatableObject`) as a model-level validator. Each failure is a `ValidationError` like any other: its key is named after the attribute (`required_City`, `stringLength_Zipcode`), its property is the CLR property, and its message is the annotation's own.
+`DataAnnotationsValidator` runs a model's data annotations (`[Required]`, `[StringLength]`, any `ValidationAttribute`, and `IValidatableObject`) as a model-level validator. It works on any CLR object and doesn't depend on Breeze. Each failure is a `ValidationError` like any other: its key is named after the attribute (`required_City`, `stringLength_Zipcode`), its property is the CLR property, and its message is the annotation's own.
 
-Reference it from the metadata, usually as a global validator. To pair it with the client's `breeze` validator, register it as `breeze`: Breeze builds its client-side rules from these same annotations, so one metadata entry runs them on both sides.
+Reference it from the metadata, usually as a global validator. If your client uses Breeze, register it as `breeze` to pair it with the client's `breeze` validator: Breeze builds its client-side rules from these same annotations, so one metadata entry runs them on both sides.
 
 ```csharp
 services.AddIdeaBladeValidation(v => v

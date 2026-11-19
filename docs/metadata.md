@@ -49,6 +49,8 @@ Metadata is JSON. It's usually generated on the server or authored per feature, 
 }
 ```
 
+The global `breeze` validator in this example comes from the optional [Breeze integration](breeze.md). Without Breeze, leave it out, or reference your own data layer's validator instead ([Integrating your data layer](concepts.md#integrating-your-data-layer)).
+
 ## Top level
 
 | Key | Meaning |

@@ -16,7 +16,7 @@ root.render(
 );
 ```
 
-The provider accepts either `service={existingService}` or any option of `createValidationService` (`metadata`, `validators`, `contextProviders`, `expressionScope`, `expressionEvaluator`, `asyncTimeout`, `includeDefaultValidators`). It creates the service once, on first render.
+The provider accepts either `service={existingService}` or any option of `createValidationService` (`metadata`, `validators`, `contextProviders`, `expressionScope`, `expressionEvaluator`, `asyncTimeout`, `includeDefaultValidators`). It creates the service once, on first render. `breezeValidator` is only needed if you use Breeze; other data layers register their own pieces the same way ([Integrating your data layer](concepts.md#integrating-your-data-layer)).
 
 If you have a dependency-injection container (InversifyJS, tsyringe, …), create the service there and pass `service`.
 
@@ -71,14 +71,14 @@ function OrderEditor({ unitOfWork }: { unitOfWork: UnitOfWork }) {
 }
 ```
 
-`store(type)` and `unique` then see the store's entities, and `useValidation` re-validates when they change.
+`store(type)` and `unique` then see the store's entities, and `useValidation` re-validates when they change. The store can be any [entity store](concepts.md#writing-an-entity-store): Breeze's, as here, or one built with `createEntityStore` for your own data layer.
 
 ## `useEntityStoreValidation(store, options?)`
 
 This hook continuously validates every entity in a store and returns the latest `{ entities, validationErrors }`:
 
 ```tsx
-const store = useMemo(() => breezeEntityStore(manager), [manager]);
+const store = useMemo(() => breezeEntityStore(manager), [manager]);   // or any other entity store
 const result = useEntityStoreValidation(store);
 return <ErrorList errors={result?.validationErrors ?? []} />;
 ```

@@ -2,6 +2,8 @@
 
 A **data-store agnostic, metadata-driven validation framework** for TypeScript and .NET.
 
+The framework works with **any persistence layer**: Breeze, an ORM or REST client, NgRx, MobX, or plain objects. Its core knows nothing about where your data comes from. It ships with a ready-made integration for Breeze, but that integration is built only on the core's public extension points, and any other data layer can be integrated just as easily ([Integrating your data layer](docs/concepts.md#integrating-your-data-layer)).
+
 ## Why this framework
 
 Many applications tie validation to the forms in their UI. Each form declares its own validators, so the rules for one entity end up spread across every screen that edits it, and they drift apart. Angular's validation framework works this way too: it validates form controls, so data can only be validated when a form shows it.
@@ -15,9 +17,10 @@ Validation should also be independent of how the data is shown. Whenever state c
 - Rules live in **JSON metadata**: per model type, with property rules, model rules, groups, conditions and inheritance. The same metadata runs in the browser and on the server.
 - **Validators plug in by name** through dependency injection: Angular providers, React provider props, or .NET `IServiceCollection`.
 - Validators can be **sync or async**. Async validators may return Observables, Promises or Tasks, with a timeout.
-- **Continuous validation** of whole entity stores, such as a Breeze `EntityManager`, that re-validates as entities change.
+- **Continuous validation** of whole entity stores, such as a Breeze `EntityManager`, an NgRx store or your own cache, that re-validates as entities change.
 - **No `eval`.** Conditions and expressions run in a safe, sandboxed expression interpreter that works under a strict CSP. One grammar is shared by both platforms.
-- First-class **Angular** (standalone providers, signals, reactive, template-driven and Signal Forms), **React** (hooks) and **Breeze 3** integrations, all optional peer dependencies.
+- First-class **Angular** (standalone providers, signals, reactive, template-driven and Signal Forms) and **React** (hooks) integrations, both optional peer dependencies.
+- **Any data layer.** A ready-made **Breeze 3** integration ships with the package (an entity store, a model type resolver, a rule source and a validator), also an optional peer dependency. Any other persistence layer plugs into the same public extension points.
 
 | Package | Folder | Install |
 |---|---|---|
@@ -54,7 +57,7 @@ service.validateModelSync({ name: '', email: 'nope', country: 'US' }, 'Customer'
 **Angular:**
 
 ```ts
-providers: [provideValidation({ metadata, validators: [breezeValidator] })]
+providers: [provideValidation({ metadata })]   // with Breeze, e.g. also validators: [breezeValidator]
 // then: inject(ValidationService), validationErrors(signal, 'Customer'), FormValidators, ValidationFormsDirectives
 ```
 
@@ -84,7 +87,8 @@ var errors = validationService.ValidateModel(customer);
 | [Validators](docs/validators.md) | Built-in validators, and writing your own |
 | [Expressions](docs/expressions.md) | The safe expression language |
 | [Security](docs/security.md) | Why expressions run in a safe interpreter instead of `eval` |
-| [Angular](docs/angular.md) · [React](docs/react.md) · [Breeze](docs/breeze.md) · [.NET](docs/dotnet.md) | Integrations |
+| [Angular](docs/angular.md) · [React](docs/react.md) · [.NET](docs/dotnet.md) | Integrations |
+| [Integrating your data layer](docs/concepts.md#integrating-your-data-layer) · [Breeze](docs/breeze.md) | Connecting any persistence layer, and the ready-made Breeze integration |
 
 ## Repository layout
 
