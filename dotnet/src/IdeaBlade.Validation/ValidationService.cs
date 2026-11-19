@@ -42,6 +42,12 @@ namespace IdeaBlade.Validation
 
         /// <summary>Maps a model instance to its model type name. Default: CLR type name (EF/Castle proxies unwrapped).</summary>
         public Func<object, string> ModelTypeResolver { get; set; } = Extensions.DefaultModelTypeName;
+
+        /// <summary>
+        /// Translates property names between the metadata and the models. Default: <see cref="NamingConvention.CamelCase"/>,
+        /// camelCase metadata over PascalCase CLR properties.
+        /// </summary>
+        public NamingConvention NamingConvention { get; set; } = NamingConvention.CamelCase;
     }
 
     /// <summary>Event data for <see cref="ValidationService.ModelValidated"/>.</summary>
@@ -236,6 +242,7 @@ namespace IdeaBlade.Validation
                     ExpressionEvaluator = ValidationMetadata.ExpressionEvaluator,
                     ExpressionScope = scope,
                     Store = options?.Store,
+                    NamingConvention = _options.NamingConvention,
                 };
                 if (property != null)
                 {
@@ -263,7 +270,7 @@ namespace IdeaBlade.Validation
                 {
                     if (validator.IsAsync != isAsync || !predicate(validator, property)) continue;
                     var ctx = CreateContext(validator, property);
-                    if (validator.EvalCondition(ctx, resolver)) planned.Add(new PlannedValidation(validator.GetValidator(), property.GetValue(model), ctx));
+                    if (validator.EvalCondition(ctx, resolver)) planned.Add(new PlannedValidation(validator.GetValidator(), property.GetValue(model, _options.NamingConvention), ctx));
                 }
             }
             return planned;

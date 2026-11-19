@@ -49,6 +49,8 @@ Metadata is JSON. It's usually generated on the server or authored per feature, 
 }
 ```
 
+Property names in the metadata are camelCase, as JavaScript objects name them. On .NET, a [naming convention](dotnet.md#property-names) maps them to PascalCase CLR properties.
+
 The global `breeze` validator in this example comes from the optional [Breeze integration](breeze.md). Without Breeze, leave it out, or reference your own data layer's validator instead ([Integrating your data layer](concepts.md#integrating-your-data-layer)).
 
 > **In TempHire:** [`validation.metadata.json`](https://github.com/Breeze/temphire.angular/blob/master/server/TempHire.Server/Validation/validation.metadata.json) is the metadata of a real app: U.S. addresses, phone number formats, rates, dates, and rules across entities such as "a staffing resource has at least one address" (`store('Address')`) and "is at least 18 years old when hired" (`propertyNames`). The client adds metadata for its own view models in [`client-validation-metadata.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/core/validation/client-validation-metadata.ts).

@@ -75,11 +75,14 @@ namespace IdeaBlade.Validation.Validators
         private ValidationError Error(string name, string? propertyName, object? value, string? message, ValidationContext? context)
         {
             var ctx = GetValidatorFunctionContext(value, context);
-            ctx.PropertyName = propertyName;
+            // The property as the metadata names it (City → city), like every other rule's: the error reports it as the
+            // model does (ValidationError.PropertyNames), and the key matches the client's (required_city).
+            var metadataName = propertyName == null ? null : (ctx.NamingConvention ?? NamingConvention.CamelCase).ToMetadataName(propertyName);
+            ctx.PropertyName = metadataName;
             ctx.DisplayName = propertyName;
             // The annotation has already formatted the message.
             ctx.MessageTemplate = string.IsNullOrEmpty(message) ? ValidationError.GenericErrorMessage : message;
-            var key = string.Join("_", new[] { name, Group, propertyName }.Where(s => !string.IsNullOrEmpty(s)));
+            var key = string.Join("_", new[] { name, Group, metadataName }.Where(s => !string.IsNullOrEmpty(s)));
             return new ValidationError(key, ctx, this);
         }
 

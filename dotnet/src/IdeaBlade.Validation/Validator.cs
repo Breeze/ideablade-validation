@@ -41,7 +41,8 @@ namespace IdeaBlade.Validation
             }
             var displayName = context?.DisplayName;
             if (string.IsNullOrEmpty(displayName)) displayName = Context.DisplayName;
-            if (string.IsNullOrEmpty(displayName)) displayName = context?.PropertyName;
+            // Without a display name, a message names the property as the model does (StateId), like the data annotations.
+            if (string.IsNullOrEmpty(displayName) && context?.PropertyName != null) displayName = context.ToModelName(context.PropertyName);
             ctx.DisplayName = displayName;
             ctx.Value = value;
             ctx.ValidatorName = Name;

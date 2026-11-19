@@ -35,7 +35,7 @@ builder.Services.AddIdeaBladeValidation(v => v
 | `AddDataAnnotations(name = "dataAnnotations")` | Registers `DataAnnotationsValidator` under `name` ([below](#data-annotations)) |
 | `AddRuleSource(source)` / `AddRuleSource<T>()` | `IValidationRuleSource`: rules outside the metadata, inherited through `from` ([concepts.md](concepts.md#rule-sources)) |
 | `AddExpressionFunction(name, delegate)` | A trusted function callable from expressions |
-| `Configure(Action<ValidationServiceOptions>)` | `AsyncTimeout`, `OnAsyncTimeout`, `ModelTypeResolver`, `ExpressionScope` |
+| `Configure(Action<ValidationServiceOptions>)` | `AsyncTimeout`, `OnAsyncTimeout`, `ModelTypeResolver`, `NamingConvention` ([below](#property-names)), `ExpressionScope` |
 | `ConfigureExpressions(Action<SafeExpressionEvaluatorOptions>)` | `Globals`, `AllowedMethods`, `MaxSteps`, `MaxCallDepth`, `CacheSize` |
 | `UseExpressionEvaluator(sp => evaluator)` | Replace the expression engine |
 
@@ -70,7 +70,28 @@ public class OrdersController(ValidationService validation) : ControllerBase
 
 `ValidationOptions` has `Predicate`, `Context`, `ConditionContextResolver`, `Store`, and `ExpressionScope`, the same meanings as in TS ([concepts.md](concepts.md)).
 
-`ValidationError` has `Key`, `Id`, `PropertyNames` (the properties it is about: a property rule's property, or those a model-level rule names in `propertyNames`), `IsFor(propertyName)`, `Value`, `ErrorMessage`, `GetErrorMessage(displayName)` and `Context`. `errors.HasErrors()` and `errors.Success()` are extension methods.
+`ValidationError` has `Key`, `Id`, `PropertyNames` (the properties it is about, as the model names them: a property rule's property, or those a model-level rule names in `propertyNames`), `MetadataPropertyNames` (the same, as the metadata names them), `IsFor(propertyName)`, `Value`, `ErrorMessage`, `GetErrorMessage(displayName)` and `Context`. `errors.HasErrors()` and `errors.Success()` are extension methods.
+
+### Property names
+
+The metadata names properties once, for every platform, in camelCase: `firstName`, `stateId`. JavaScript objects use those names as they are. CLR objects use PascalCase: `FirstName`, `StateId`. A **naming convention** translates between the two, as Breeze's `NamingConvention` does between a Breeze client and server. On .NET the default is `NamingConvention.CamelCase`.
+
+It applies where a name crosses between the metadata and the model:
+
+- **Reading a value.** The metadata's `stateId` reads the CLR property `StateId`. If the model has no property of that name, a property with the metadata's exact name is used, then one that matches it case-insensitively.
+- **The names an error reports.** `ValidationError.PropertyNames` and `IsFor(name)` use the model's names (`StateId`), so server code can use them with its CLR objects. `MetadataPropertyNames` has the metadata's (`stateId`).
+- **Messages.** A property without a `displayName` is named in a message as the model names it: `StateId is required`, like the data annotations' own messages.
+
+Everything inside the metadata keeps the metadata's names: error keys (`required_stateId`, the same key as on the client), `propertyNames`, `from` references and `context.propertyName` in expressions. A model with no CLR properties of its own, such as a dictionary, an `ExpandoObject` or JSON, uses the metadata's names, so nothing is translated for it.
+
+```csharp
+.Configure(o => o.NamingConvention = NamingConvention.None)                       // the metadata uses the CLR names
+.Configure(o => o.NamingConvention = new NamingConvention("snake_case", ToPascal, ToSnake))   // any other mapping
+```
+
+The TypeScript library needs no convention: its objects already have the metadata's names. Another server platform would default to its own convention.
+
+> **In TempHire:** the metadata ([`validation.metadata.json`](https://github.com/Breeze/temphire.angular/blob/master/server/TempHire.Server/Validation/validation.metadata.json)) uses the client's camelCase names, and the server reads them from the PascalCase entities with the default convention.
 
 ### Model type names
 
@@ -140,7 +161,7 @@ That knowledge is in two places an AI coding assistant can read: the rules (`sto
 
 ## Data annotations
 
-`DataAnnotationsValidator` runs a model's data annotations (`[Required]`, `[StringLength]`, any `ValidationAttribute`, and `IValidatableObject`) as a model-level validator. It works on any CLR object and doesn't depend on Breeze. Each failure is a `ValidationError` like any other: its key is named after the attribute (`required_City`, `stringLength_Zipcode`), its property is the CLR property, and its message is the annotation's own.
+`DataAnnotationsValidator` runs a model's data annotations (`[Required]`, `[StringLength]`, any `ValidationAttribute`, and `IValidatableObject`) as a model-level validator. It works on any CLR object and doesn't depend on Breeze. Each failure is a `ValidationError` like any other: its key is named after the attribute and the property as the metadata names it (`required_city`, `stringLength_zipcode`, the same keys as Breeze's on the client), `PropertyNames` holds the CLR property, and its message is the annotation's own. The metadata's name comes from the [naming convention](#property-names).
 
 Reference it from the metadata, usually as a global validator. If your client uses Breeze, register it as `breeze` to pair it with the client's `breeze` validator: Breeze builds its client-side rules from these same annotations, so one metadata entry runs them on both sides.
 
@@ -177,7 +198,7 @@ The context is a case-insensitive dictionary (`ValidationContextBase` / `Validat
 
 The interpreter is the same as in TS ([expressions.md](expressions.md)). It reads CLR objects as follows:
 
-- **Properties** are matched case-insensitively (`model.firstName` → `FirstName`), and also through `IDictionary<string, object?>`, `ExpandoObject`, `JsonElement` and `JsonNode`.
+- **Properties** are matched case-insensitively (`model.firstName` → `FirstName`), and also through `IDictionary<string, object?>`, `ExpandoObject`, `JsonElement` and `JsonNode`. This holds whatever the [naming convention](#property-names), so expressions written for the client run unchanged.
 - **Numbers** become `double` inside expressions. `decimal` values beyond double precision lose precision, so compare money with a tolerance or in a custom validator.
 - **Enums** become their names and **Guids** become strings: `model.status === 'Active'`.
 - **Dates:** `DateTime` behaves like a JS `Date`. Relational operators compare by time, and `===` between two date objects is false, as in JS; use `getTime()`. `DateTimeOffset` is converted to UTC.
