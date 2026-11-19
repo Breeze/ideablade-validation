@@ -30,16 +30,20 @@ namespace IdeaBlade.Validation
         /// <summary>Stable identifier from the metadata (<c>id</c>), or the key if no id was configured.</summary>
         public string Id => Validator.Metadata?.Id ?? Key;
         /// <summary>
-        /// The properties the error is about. For a property rule, the property. For a model-level rule, the properties it
-        /// names (<c>propertyNames</c> in the metadata, or set by the validator), such as both dates of a "start before
-        /// end" rule; empty when it is about the model as a whole.
+        /// The properties the error is about, as the model names them (<c>StateId</c>; see <see cref="NamingConvention"/>).
+        /// For a property rule, the property. For a model-level rule, the properties it names (<c>propertyNames</c> in the
+        /// metadata, or set by the validator), such as both dates of a "start before end" rule; empty when it is about the
+        /// model as a whole.
         /// </summary>
-        public IReadOnlyList<string> PropertyNames =>
+        public IReadOnlyList<string> PropertyNames => MetadataPropertyNames.Select(Context.ToModelName).ToList();
+
+        /// <summary>The same properties as <see cref="PropertyNames"/>, as the metadata names them (<c>stateId</c>).</summary>
+        public IReadOnlyList<string> MetadataPropertyNames =>
             Context.PropertyNames is { Count: > 0 } names ? names
             : Context.PropertyName != null ? new[] { Context.PropertyName }
             : Array.Empty<string>();
 
-        /// <summary>True when the error is about <paramref name="propertyName"/> (one of its <see cref="PropertyNames"/>).</summary>
+        /// <summary>True when the error is about <paramref name="propertyName"/>, a model property name (one of its <see cref="PropertyNames"/>).</summary>
         public bool IsFor(string propertyName) => PropertyNames.Contains(propertyName);
         public object? Model => Context.Model;
         public string? ModelType => Context.ModelType;
@@ -51,7 +55,7 @@ namespace IdeaBlade.Validation
         {
             var ctx = new ValidationContext(Context)
             {
-                DisplayName = displayName ?? (string.IsNullOrEmpty(Context.DisplayName) ? Context.PropertyName ?? "" : Context.DisplayName),
+                DisplayName = displayName ?? (string.IsNullOrEmpty(Context.DisplayName) ? (Context.PropertyName == null ? "" : Context.ToModelName(Context.PropertyName)) : Context.DisplayName),
             };
             return FormatMessage(ctx.MessageTemplate, ctx);
         }

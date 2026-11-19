@@ -55,7 +55,8 @@ public class ValidationServiceTests
         Assert.Equal("First name is required", error.ErrorMessage);
         Assert.Equal("required_firstName", error.Key);
         Assert.Equal("REQUIRED", error.Id);
-        Assert.Equal(new[] { "firstName" }, error.PropertyNames);
+        Assert.Equal(new[] { "FirstName" }, error.PropertyNames);
+        Assert.Equal(new[] { "firstName" }, error.MetadataPropertyNames);
     }
 
     [Fact]
@@ -234,7 +235,7 @@ public class ValidationServiceTests
             new OrderLine { Id = 10, OrderId = 1 },
         };
         var errors = await service.ValidateEntitiesAsync(entities, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(new[] { "Order A has no lines", "number must be unique", "number must be unique" }, errors.Select(e => e.ErrorMessage).OrderBy(m => m, StringComparer.Ordinal));
+        Assert.Equal(new[] { "Number must be unique", "Number must be unique", "Order A has no lines" }, errors.Select(e => e.ErrorMessage).OrderBy(m => m, StringComparer.Ordinal));
     }
 
     [Fact]

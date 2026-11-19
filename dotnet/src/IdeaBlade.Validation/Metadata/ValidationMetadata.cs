@@ -205,13 +205,16 @@ namespace IdeaBlade.Validation.Metadata
             }
         }
 
-        /// <summary>Reads this property's value from a model (camelCase-insensitive for CLR objects).</summary>
-        public object? GetValue(object? model)
+        /// <summary>
+        /// Reads this property's value from a model. On a CLR object, the property is the one <paramref name="namingConvention"/>
+        /// names (<c>stateId</c> → <c>StateId</c> by default), else the one of the metadata's name, else one that
+        /// matches it case-insensitively.
+        /// </summary>
+        public object? GetValue(object? model, NamingConvention? namingConvention = null)
         {
             if (model == null) return null;
             if (model is IDictionary<string, object?> dict && dict.TryGetValue(PropertyName, out var direct)) return direct;
-            var type = model.GetType();
-            var pi = type.GetProperty(PropertyName) ?? type.GetProperties().FirstOrDefault(p => string.Equals(p.Name, PropertyName, StringComparison.OrdinalIgnoreCase) && p.GetIndexParameters().Length == 0);
+            var pi = NamingConvention.FindProperty(model.GetType(), PropertyName, namingConvention);
             if (pi != null) return pi.GetValue(model);
             return JsRuntime.Export(JsRuntime.GetProperty(model, PropertyName));
         }

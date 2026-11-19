@@ -70,6 +70,15 @@ namespace IdeaBlade.Validation
 
         /// <summary>The <c>store(entityType)</c> lookup, when an entity store is available.</summary>
         public Func<string, IEnumerable<object>>? Store { get => GetValue(nameof(Store)) as Func<string, IEnumerable<object>>; set => SetValue(nameof(Store), value); }
+
+        /// <summary>
+        /// Translates between the metadata's property names, such as <see cref="PropertyName"/>, and the model's. See
+        /// <see cref="IdeaBlade.Validation.NamingConvention"/>.
+        /// </summary>
+        public NamingConvention? NamingConvention { get => GetValue(nameof(NamingConvention)) as NamingConvention; set => SetValue(nameof(NamingConvention), value); }
+
+        /// <summary>A metadata property name as <see cref="Model"/> names it, by <see cref="NamingConvention"/>.</summary>
+        internal string ToModelName(string metadataName) => IdeaBlade.Validation.NamingConvention.ModelPropertyName(Model, metadataName, NamingConvention);
     }
 
     /// <summary>Context passed to a validator function: the validation context plus the value under validation.</summary>

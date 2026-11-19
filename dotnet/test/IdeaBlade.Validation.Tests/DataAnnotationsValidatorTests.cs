@@ -41,10 +41,10 @@ public class DataAnnotationsValidatorTests
         var errors = CreateService().ValidateModel(new Address { Zipcode = "123" });
 
         Assert.Equal(
-            new[] { ("stringLength_Zipcode", "Zipcode"), ("required_City", "City"), ("expression_stateId", "stateId") },
+            new[] { ("stringLength_zipcode", "Zipcode"), ("required_city", "City"), ("expression_stateId", "StateId") },
             errors.Select(e => (e.Key, e.PropertyNames.Single())));
         Assert.Equal(
-            new[] { "The field Zipcode must be a string with a minimum length of 5 and a maximum length of 10.", "The City name field is required.", "stateId is required" },
+            new[] { "The field Zipcode must be a string with a minimum length of 5 and a maximum length of 10.", "The City name field is required.", "StateId is required" },
             errors.Select(e => e.ErrorMessage));
     }
 
@@ -55,7 +55,7 @@ public class DataAnnotationsValidatorTests
         Assert.Empty(service.ValidateModel(new Address { Zipcode = "98101", City = "Seattle", StateId = Guid.NewGuid() }));
 
         var error = Assert.Single(service.ValidateModel(new Address { Zipcode = "98101", City = "Nowhere", StateId = Guid.NewGuid() }));
-        Assert.Equal(("validatableObject_City", "There is no such city"), (error.Key, error.ErrorMessage));
+        Assert.Equal(("validatableObject_city", "There is no such city"), (error.Key, error.ErrorMessage));
     }
 
     [Fact]
@@ -71,7 +71,7 @@ public class DataAnnotationsValidatorTests
 
         var errors = service.ValidateModel(new Address { Zipcode = "98101" });
         Assert.Equal(new[] { "breeze" }, errors.Select(e => e.Validator.Name).Distinct());
-        Assert.Equal(new[] { "required_City" }, errors.Select(e => e.Key));
+        Assert.Equal(new[] { "required_city" }, errors.Select(e => e.Key));
     }
 }
 
