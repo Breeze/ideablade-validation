@@ -15,7 +15,12 @@
  */
 import type { ValidationContextBase } from './context.js';
 
+/** `$comment` in the metadata: a string, or an array of strings for one paragraph each. */
+export type MetadataComment = string | string[];
+
 export interface ValidatorConfig {
+  /** A note for the people who maintain the metadata; ignored when validating. */
+  $comment?: MetadataComment;
   /** Registered validator name. */
   name: string;
   /** Optional stable identifier reported as `ValidationError.id`. */
@@ -39,6 +44,8 @@ export type ValidatorConfigLike = string | ValidatorConfig;
 
 /** A named group of validators, e.g. validators that only run during a particular workflow step. */
 export interface ValidatorGroupConfig {
+  /** A note for the people who maintain the metadata; ignored when validating. */
+  $comment?: MetadataComment;
   group: string;
   validators: ValidatorConfigLike[];
 }
@@ -46,6 +53,8 @@ export interface ValidatorGroupConfig {
 export type ValidatorOrGroupConfig = ValidatorConfigLike | ValidatorGroupConfig;
 
 export interface PropertyValidationConfig {
+  /** A note for the people who maintain the metadata; ignored when validating. */
+  readonly $comment?: MetadataComment;
   /**
    * Inherit the rules of another model type's property: `"Customer"` for the property of the same name, or
    * `"Customer.email"`. The property gets that property's validators and `displayName`, from the metadata and from
@@ -68,6 +77,8 @@ export interface PropertyValidationConfigMap {
 }
 
 export interface ModelValidationConfig {
+  /** A note for the people who maintain the metadata; ignored when validating. */
+  readonly $comment?: MetadataComment;
   /** Name of another model type whose validators and properties are inherited. */
   readonly extends?: string;
   /** Model-level validators; they receive the whole model as value. */
@@ -78,14 +89,26 @@ export interface ModelValidationConfig {
 }
 
 export interface GlobalMetadataConfig {
+  /** A note for the people who maintain the metadata; ignored when validating. */
+  $comment?: MetadataComment;
   /** Validators applied to every model type. */
   validators?: ValidatorOrGroupConfig[];
 }
 
-/** Validation metadata keyed by model type, plus an optional `global` section. */
+/**
+ * Validation metadata keyed by model type, plus an optional `global` section.  `$schema` and `$comment` are for
+ * editors and readers; they are not model types (see {@link isModelTypeKey}).
+ */
 export interface ModelValidationMetadataMap {
+  $schema?: string;
+  $comment?: MetadataComment;
   global?: GlobalMetadataConfig;
-  [modelType: string]: ModelValidationConfig | GlobalMetadataConfig | undefined;
+  [modelType: string]: ModelValidationConfig | GlobalMetadataConfig | MetadataComment | undefined;
+}
+
+/** Whether a key of a {@link ModelValidationMetadataMap} names a model type, rather than `global`, `$schema` or `$comment`. */
+export function isModelTypeKey(key: string): boolean {
+  return key !== 'global' && key !== '$schema' && key !== '$comment';
 }
 
 /** One or more metadata maps (arrays may be nested one level, as produced by multi providers). */

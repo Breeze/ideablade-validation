@@ -12,6 +12,7 @@ import {
   type ValidatorConfigLike,
   type ValidatorGroupConfig,
   type ValidatorOrGroupConfig,
+  isModelTypeKey,
   isValidatorGroupConfig,
 } from './metadata-config.js';
 import type { Validator, ValidatorFactory } from './validator.js';
@@ -412,7 +413,7 @@ export class ValidationMetadata {
 
   /** Model types with explicit metadata. */
   get modelTypes(): string[] {
-    return [...new Set(this.maps.flatMap((m) => Object.keys(m).filter((k) => k !== 'global')))];
+    return [...new Set(this.maps.flatMap((m) => Object.keys(m).filter(isModelTypeKey)))];
   }
 
   /**

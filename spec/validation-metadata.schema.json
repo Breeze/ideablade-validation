@@ -6,14 +6,23 @@
   "type": "object",
   "properties": {
     "$schema": { "type": "string" },
+    "$comment": { "$ref": "#/$defs/comment" },
     "global": { "$ref": "#/$defs/global" }
   },
   "additionalProperties": { "$ref": "#/$defs/model" },
   "$defs": {
+    "comment": {
+      "description": "A note for the people who maintain the metadata: a string, or an array of strings for one paragraph each. Ignored when validating.",
+      "oneOf": [
+        { "type": "string" },
+        { "type": "array", "items": { "type": "string" } }
+      ]
+    },
     "global": {
       "type": "object",
       "description": "Validators applied to every model type.",
       "properties": {
+        "$comment": { "$ref": "#/$defs/comment" },
         "validators": { "$ref": "#/$defs/validatorList" }
       },
       "additionalProperties": false
@@ -21,6 +30,7 @@
     "model": {
       "type": "object",
       "properties": {
+        "$comment": { "$ref": "#/$defs/comment" },
         "extends": {
           "type": "string",
           "description": "Model type whose validators and properties are inherited."
@@ -43,6 +53,7 @@
     "property": {
       "type": "object",
       "properties": {
+        "$comment": { "$ref": "#/$defs/comment" },
         "from": {
           "type": "string",
           "pattern": "^[^.]+(\\.[^.]+)?$",
@@ -70,6 +81,7 @@
       "type": "object",
       "description": "A named group of validators. Select groups at validation time with a predicate.",
       "properties": {
+        "$comment": { "$ref": "#/$defs/comment" },
         "group": { "type": "string" },
         "validators": {
           "type": "array",
@@ -91,6 +103,7 @@
     "validator": {
       "type": "object",
       "properties": {
+        "$comment": { "$ref": "#/$defs/comment" },
         "name": { "$ref": "#/$defs/validatorName" },
         "id": { "type": "string", "description": "Stable identifier reported as ValidationError.id." },
         "async": { "type": "boolean", "description": "Select the asynchronous validator registered under 'name'." },

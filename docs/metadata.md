@@ -49,6 +49,8 @@ Metadata is JSON. It's usually generated on the server or authored per feature, 
 }
 ```
 
+**Comments.**  The top level, `global`, and every model, property, validator and group may have a `$comment`: a string, or an array of strings for one paragraph each. It is for the people who maintain the rules, to say why a rule exists or where else it is enforced. The schema allows it, and validating ignores it, like `$schema`.
+
 Property names in the metadata are camelCase, as JavaScript objects name them. On .NET, a [naming convention](dotnet.md#property-names) maps them to PascalCase CLR properties.
 
 The global `breeze` validator in this example comes from the optional [Breeze integration](breeze.md). Without Breeze, leave it out, or reference your own data layer's validator instead ([Integrating your data layer](concepts.md#integrating-your-data-layer)).
