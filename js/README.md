@@ -16,7 +16,7 @@ npm i @ideablade/validation rxjs
 | `@ideablade/validation/react` | `ValidationProvider`, `useValidation`, `useValidationScope`, `useEntityStoreValidation` | `react ≥18` |
 | `@ideablade/validation/breeze` | Optional ready-made Breeze integration: `breezeValidator`, `installBreezeValidators`, `breezeEntityStore`, `breezeModelType`, `breezeRuleSource` | `breeze-client ≥3` |
 
-The package is ESM-only and requires Node.js ≥ 22 for server-side use. The metadata JSON schema ships at `@ideablade/validation/schema/validation-metadata.schema.json`.
+The package is ESM-only and requires Node.js ≥ 22 for server-side use. The metadata JSON schema ships at `@ideablade/validation/schema/validation-metadata.schema.json`; for referencing it from `$schema`, a URL works best ([Referencing the schema](https://github.com/Breeze/ideablade-validation/blob/main/docs/metadata.md#referencing-the-schema)).
 
 ```ts
 import { createValidationService } from '@ideablade/validation';

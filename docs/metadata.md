@@ -1,10 +1,10 @@
 # Metadata reference
 
-Metadata is JSON. It's usually generated on the server or authored per feature, and the TypeScript and .NET libraries read the same format. A JSON Schema is in [`spec/validation-metadata.schema.json`](../spec/validation-metadata.schema.json); reference it for editor completion:
+Metadata is JSON. It's usually generated on the server or authored per feature, and the TypeScript and .NET libraries read the same format. A JSON Schema is in [`spec/validation-metadata.schema.json`](../spec/validation-metadata.schema.json); reference it with `$schema` for editor completion and checking (see [Referencing the schema](#referencing-the-schema)):
 
 ```json
 {
-  "$schema": "../node_modules/@ideablade/validation/schema/validation-metadata.schema.json",
+  "$schema": "https://raw.githubusercontent.com/Breeze/ideablade-validation/main/spec/validation-metadata.schema.json",
   "global": {
     "validators": ["breeze"]
   },
@@ -56,6 +56,17 @@ Property names in the metadata are camelCase, as JavaScript objects name them. O
 The global `breeze` validator in this example comes from the optional [Breeze integration](breeze.md). Without Breeze, leave it out, or reference your own data layer's validator instead ([Integrating your data layer](concepts.md#integrating-your-data-layer)).
 
 > **In TempHire:** [`validation.metadata.json`](https://github.com/Breeze/temphire.server/blob/main/TempHire.Server/Validation/validation.metadata.json) is the metadata of a real app: U.S. addresses, phone number formats, rates, dates, and rules across entities such as "a staffing resource has at least one address" (`store('Address')`) and "is at least 18 years old when hired" (`propertyNames`). The client adds metadata for its own view models in [`client-validation-metadata.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/core/validation/client-validation-metadata.ts).
+
+## Referencing the schema
+
+Point `$schema` at the schema by URL, as in the example above. A URL needs no installed package, so it also works in a project without `node_modules`, such as a .NET-only one, and Visual Studio loads it without the error described below.
+
+- **Pin it to the version you use.** `main` follows the library as it changes; in the URL, replace `main` with the commit or tag your packages were built from, so the editor checks the same rules the packages run. Move it when you update the packages.
+- **The npm package ships the schema too**, at `@ideablade/validation/schema/validation-metadata.schema.json`, and a relative path to it (`../node_modules/@ideablade/validation/schema/validation-metadata.schema.json`) keeps it in step with the installed package without a URL to maintain. But Visual Studio 2026 reports "Error loading schema" in the Output window's JSON pane for such a path, even though it then uses the schema, and the path only works where that `node_modules` is.
+
+The loaders ignore `$schema`; it is for editors only.
+
+> **In TempHire:** [`validation.metadata.json`](https://github.com/Breeze/temphire.server/blob/main/TempHire.Server/Validation/validation.metadata.json) links the schema by URL, pinned to the commit its preview packages were built from. The server is a submodule of both clients and is also opened on its own, so a path into a client's `node_modules` would not always lead anywhere.
 
 ## Top level
 
