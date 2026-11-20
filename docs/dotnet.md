@@ -41,7 +41,7 @@ builder.Services.AddIdeaBladeValidation(v => v
 
 Lifetimes: `ValidationMetadata` and the expression evaluator are singletons. `ValidationService` is **scoped**, so context providers can depend on the request's services.
 
-> **In TempHire:** [`Program.cs`](https://github.com/Breeze/temphire.angular/blob/master/server/TempHire.Server/Program.cs) registers the service with the app's [`validation.metadata.json`](https://github.com/Breeze/temphire.angular/blob/master/server/TempHire.Server/Validation/validation.metadata.json) and the data annotations, and [`ValidationController`](https://github.com/Breeze/temphire.angular/blob/master/server/TempHire.Server/Controllers/ValidationController.cs) serves the same metadata to the client, so both sides check the same rules.
+> **In TempHire:** [`Program.cs`](https://github.com/Breeze/temphire.server/blob/main/TempHire.Server/Program.cs) registers the service with the app's [`validation.metadata.json`](https://github.com/Breeze/temphire.server/blob/main/TempHire.Server/Validation/validation.metadata.json) and the data annotations, and [`ValidationController`](https://github.com/Breeze/temphire.server/blob/main/TempHire.Server/Controllers/ValidationController.cs) serves the same metadata to the client, so both sides check the same rules.
 
 ## Validating
 
@@ -91,7 +91,7 @@ Everything inside the metadata keeps the metadata's names: error keys (`required
 
 The TypeScript library needs no convention: its objects already have the metadata's names. Another server platform would default to its own convention.
 
-> **In TempHire:** the metadata ([`validation.metadata.json`](https://github.com/Breeze/temphire.angular/blob/master/server/TempHire.Server/Validation/validation.metadata.json)) uses the client's camelCase names, and the server reads them from the PascalCase entities with the default convention.
+> **In TempHire:** the metadata ([`validation.metadata.json`](https://github.com/Breeze/temphire.server/blob/main/TempHire.Server/Validation/validation.metadata.json)) uses the client's camelCase names, and the server reads them from the PascalCase entities with the default convention.
 
 ### Model type names
 
@@ -157,7 +157,7 @@ The framework knows the rules, not your model. To it, `store('OrderLine')` is a 
 
 That knowledge is in two places an AI coding assistant can read: the rules (`store(type)`, `findEntity`, `unique` and conditions in the metadata) and the model. An assistant such as Claude can write the store from them, and check it again whenever the rules change. Writing it around an aggregate, such as an order and all of its lines, instead of rule by rule keeps those changes rare: a new rule within the aggregate needs nothing new.
 
-> **In TempHire:** every save is validated this way. [`SaveValidationStore`](https://github.com/Breeze/temphire.angular/blob/master/server/TempHire.Server/Persistence/SaveValidationStore.cs) loads the staffing resources a save concerns and all of their children, and [`TempHirePersistenceManager`](https://github.com/Breeze/temphire.angular/blob/master/server/TempHire.Server/Persistence/TempHirePersistenceManager.cs) runs the rules on it before Breeze saves. Its README explains it in [Validation comes from the server](https://github.com/Breeze/temphire.angular#validation-comes-from-the-server).
+> **In TempHire:** every save is validated this way. [`SaveValidationStore`](https://github.com/Breeze/temphire.server/blob/main/TempHire.Server/Persistence/SaveValidationStore.cs) loads the staffing resources a save concerns and all of their children, and [`TempHirePersistenceManager`](https://github.com/Breeze/temphire.server/blob/main/TempHire.Server/Persistence/TempHirePersistenceManager.cs) runs the rules on it before Breeze saves. Its README explains it in [Validating the database as it will be after the save](https://github.com/Breeze/temphire.server#validating-the-database-as-it-will-be-after-the-save).
 
 ## Data annotations
 
@@ -171,7 +171,7 @@ services.AddIdeaBladeValidation(v => v
     .AddDataAnnotations("breeze"));
 ```
 
-> **In TempHire:** [`validation.metadata.json`](https://github.com/Breeze/temphire.angular/blob/master/server/TempHire.Server/Validation/validation.metadata.json) has `{ "global": { "validators": ["breeze"] } }`, and [`TempHirePersistenceManager`](https://github.com/Breeze/temphire.angular/blob/master/server/TempHire.Server/Persistence/TempHirePersistenceManager.cs) turns the errors into the Breeze `EntityError`s a failed save reports to the client.
+> **In TempHire:** [`validation.metadata.json`](https://github.com/Breeze/temphire.server/blob/main/TempHire.Server/Validation/validation.metadata.json) has `{ "global": { "validators": ["breeze"] } }`, and [`TempHirePersistenceManager`](https://github.com/Breeze/temphire.server/blob/main/TempHire.Server/Persistence/TempHirePersistenceManager.cs) turns the errors into the Breeze `EntityError`s a failed save reports to the client.
 
 ## Writing validators
 
