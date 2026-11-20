@@ -28,7 +28,7 @@ The validator runs the entity's Breeze validators itself - each property's, then
 
 Non-entities are ignored.
 
-> **In TempHire:** [`validation.metadata.json`](https://github.com/Breeze/temphire.angular/blob/master/server/TempHire.Server/Validation/validation.metadata.json) starts with `{ "global": { "validators": ["breeze"] } }`, and the client registers `breezeValidator` in [`app.config.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/app.config.ts).
+> **In TempHire:** [`validation.metadata.json`](https://github.com/Breeze/temphire.server/blob/main/TempHire.Server/Validation/validation.metadata.json) starts with `{ "global": { "validators": ["breeze"] } }`, and the client registers `breezeValidator` in [`app.config.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/app.config.ts).
 
 ### On form fields
 
@@ -51,7 +51,7 @@ There's no Breeze on a .NET server, but Breeze's rules come from the server mode
 services.AddIdeaBladeValidation(v => v.AddMetadataFile("validation.metadata.json").AddDataAnnotations("breeze"));
 ```
 
-> **In TempHire:** [`Program.cs`](https://github.com/Breeze/temphire.angular/blob/master/server/TempHire.Server/Program.cs) registers `AddDataAnnotations("breeze")`.
+> **In TempHire:** [`Program.cs`](https://github.com/Breeze/temphire.server/blob/main/TempHire.Server/Program.cs) registers `AddDataAnnotations("breeze")`.
 
 ### Breeze async validators
 
