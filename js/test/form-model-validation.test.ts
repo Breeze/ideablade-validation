@@ -10,6 +10,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import { FormValidators, type ValidationFormDirective, ValidationFormsDirectives, provideValidation } from '../src/angular/index.js';
 import type { ValidationError } from '../src/core/validation-error.js';
+import { asyncValidator } from '../src/index.js';
 
 const metadata = {
   Booking: {
@@ -51,6 +52,8 @@ const TestHost = Component({
     </form>
   `,
 })(Host);
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 beforeAll(() => {
   TestBed.initTestEnvironment(BrowserTestingModule, platformBrowserTesting());
@@ -127,6 +130,83 @@ describe('reactive forms: validateFormGroup', () => {
 
     group.get('kind')!.setValue('other');
     expect(messages('reason')).toEqual(['Reason is required']);
+    validation.dispose();
+  });
+
+  it('runs async rules as an async validator, once the sync rules pass', async () => {
+    const signup = {
+      Signup: {
+        properties: {
+          login: { displayName: 'Login', required: true, validators: [{ name: 'available', async: true }] },
+          name: { displayName: 'Name' },
+        },
+      },
+    };
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        provideValidation({
+          metadata: signup,
+          validators: [asyncValidator('available', (login) => Promise.resolve(login !== 'taken'), '%displayName% is taken')],
+        }),
+      ],
+    });
+    const model = { login: '', name: '' };
+    const group = TestBed.inject(FormBuilder).group({ ...model });
+    const validation = TestBed.inject(FormValidators).validateFormGroup(group, () => ({ entity: model, entityType: 'Signup' }));
+    const login = group.get('login')!;
+    const messages = () => Object.values(login.errors ?? {}).map((e) => (e as ValidationError).errorMessage);
+    expect(messages()).toEqual(['Login is required']);
+
+    login.setValue('taken');
+    expect(login.pending).toBe(true);
+    await delay(400);
+    expect(messages()).toEqual(['Login is taken']);
+
+    login.setValue('free');
+    await delay(400);
+    expect(login.valid).toBe(true);
+    // A control without async rules is not left pending.
+    expect(group.get('name')!.pending).toBe(false);
+    validation.dispose();
+  });
+
+  it("runs async rules on the group's current values, and re-checks them when another control changes", async () => {
+    // The login is taken only in the acme domain: the rule reads another property, which only the form has changed.
+    const account = {
+      Account: {
+        properties: { login: { displayName: 'Login', validators: [{ name: 'available', async: true }] } },
+      },
+    };
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        provideValidation({
+          metadata: account,
+          validators: [
+            asyncValidator('available', (login, { model }) => Promise.resolve(!(login === 'taken' && model.domain === 'acme')), '%displayName% is taken'),
+          ],
+        }),
+      ],
+    });
+    const model = { login: '', domain: '' };
+    const group = TestBed.inject(FormBuilder).group({ ...model });
+    const validation = TestBed.inject(FormValidators).validateFormGroup(group, () => ({ entity: model, entityType: 'Account' }));
+    const login = group.get('login')!;
+    const messages = () => Object.values(login.errors ?? {}).map((e) => (e as ValidationError).errorMessage);
+
+    group.get('domain')!.setValue('acme');
+    login.setValue('taken');
+    await delay(400);
+    expect(messages()).toEqual(['Login is taken']);
+
+    group.get('domain')!.setValue('other');
+    await delay(400);
+    expect(login.valid).toBe(true);
+    // The model itself is untouched: the values come from the form.
+    expect(model).toEqual({ login: '', domain: '' });
     validation.dispose();
   });
 });

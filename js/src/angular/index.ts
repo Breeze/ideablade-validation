@@ -282,6 +282,15 @@ export function injectFormValidators(): FormValidators {
 
 const matchGroup = (group?: string): ValidatorPredicate => (v) => (!group && !v.group) || (!!group && v.group === group);
 
+/**
+ * The async rules about a property: its own, and model-level ones that name it. A control's async validator runs only
+ * these; Angular runs the sync ones through the sync validator.
+ */
+function asyncRulesAbout(propertyName: string, group?: string): ValidatorPredicate {
+  const predicate = matchGroup(group);
+  return (v, p) => v.async && predicate(v, p) && (p ? p.propertyName === propertyName : !!v.propertyNames?.includes(propertyName));
+}
+
 function errorsToMap(errors: readonly ValidationError[]): ValidationErrors | null {
   if (errors.length === 0) {
     return null;
@@ -373,6 +382,34 @@ export class FormModelValidation {
   }
 
   /**
+   * The async errors for a control, as Angular's async validators want them: the async rules about its property, run
+   * (after `debounceMs`) on the model with all the controls' current values, as {@link errorsFor} runs the sync ones.
+   * Emits null at once when the property has no async rules. Registers the control.
+   */
+  asyncErrorsFor(control: AbstractControl, propertyName: string, debounceMs = 300): Observable<ValidationErrors | null> {
+    this.register(control, propertyName);
+    const target = this.target();
+    if (!target || target.info.entity == null) {
+      return of(null);
+    }
+    const { info, group, context } = target;
+    const asyncRules = asyncRulesAbout(propertyName, group);
+    if (!this.validationService.hasAsyncValidators(info.entityType, asyncRules)) {
+      return of(null);
+    }
+    const model = withValues(info.entity, this.entries(control));
+    return timer(debounceMs).pipe(
+      switchMap(() =>
+        this.validationService.validateModelAsync(model, info.entityType, {
+          predicate: asyncRules,
+          context: { ...context, originalModel: info.entity },
+        }),
+      ),
+      map((errors) => errorsToMap(errors.filter((e) => e.isFor(propertyName)))),
+    );
+  }
+
+  /**
    * Validates the model with the controls' current values (once per change of the model or a value). When several
    * controls edit the same property, `control`'s value is the one used.
    */
@@ -383,12 +420,7 @@ export class FormModelValidation {
     }
     const { info, group, context } = target;
     this.watch();
-    const ordered = [...this.controls.entries()];
-    const own = control ? ordered.findIndex(([c]) => c === control) : -1;
-    if (own >= 0) {
-      ordered.push(...ordered.splice(own, 1));
-    }
-    const entries = ordered.map(([c, { propertyName }]) => [propertyName, c.value] as const);
+    const entries = this.entries(control);
     const values = [info.entity, info.entityType, group, context, ...entries.flat()];
     if (this.last && sameValues(this.last.values, values)) {
       return this.last.errors;
@@ -416,6 +448,16 @@ export class FormModelValidation {
     }
     this.storeChanges?.unsubscribe();
     this.storeChanges = undefined;
+  }
+
+  /** `[propertyName, value]` of every control, `control`'s last so its value wins for a property edited twice. */
+  private entries(control?: AbstractControl): (readonly [string, unknown])[] {
+    const ordered = [...this.controls.entries()];
+    const own = control ? ordered.findIndex(([c]) => c === control) : -1;
+    if (own >= 0) {
+      ordered.push(...ordered.splice(own, 1));
+    }
+    return ordered.map(([c, { propertyName }]) => [propertyName, c.value] as const);
   }
 
   /** Updates every control except the one that just changed (it has already validated). */
@@ -454,12 +496,17 @@ export class FormValidators {
    * do: each control's errors come from validating the model with all the group's current values, so a rule spanning
    * properties updates every field it names, and a change in one control re-validates the others. Control names are
    * property names. Returns the {@link FormModelValidation} (model-level errors, `revalidate`, `dispose`).
+   *
+   * Async rules about a control's property run as its async validator, debounced, on the model with all the group's
+   * current values too ({@link FormModelValidation.asyncErrorsFor}). Angular runs them once the control's sync rules
+   * pass, and again when another control changes, as it re-checks the others.
    */
   validateFormGroup(formGroup: FormGroup, modelInfoFn: () => EntityInfo, group?: string, context?: GlobalValidationContext): FormModelValidation {
     const validation = new FormModelValidation(this.validationService, () => ({ info: modelInfoFn(), group, context }));
     for (const [propertyName, control] of Object.entries(formGroup.controls)) {
       validation.register(control, propertyName);
       control.addValidators((c) => validation.errorsFor(c, propertyName));
+      control.addAsyncValidators((c) => validation.asyncErrorsFor(c, propertyName));
     }
     for (const control of Object.values(formGroup.controls)) {
       control.updateValueAndValidity();
@@ -501,11 +548,7 @@ export class FormValidators {
     context?: GlobalValidationContext,
     debounceMs = 300,
   ): AsyncValidatorFn {
-    const predicate = matchGroup(group);
-    // Only the async rules about the property: its own, and model-level ones that name it. Angular runs the sync ones
-    // through the sync validator.
-    const asyncRules: ValidatorPredicate = (v, p) =>
-      v.async && predicate(v, p) && (p ? p.propertyName === propertyName : !!v.propertyNames?.includes(propertyName));
+    const asyncRules = asyncRulesAbout(propertyName, group);
     return (control: AbstractControl): Observable<ValidationErrors | null> => {
       const { entity, entityType } = modelInfoFn();
       if (!this.validationService.hasAsyncValidators(entityType, asyncRules)) {
@@ -674,7 +717,6 @@ export class ValidationFieldDirective implements Validator, OnChanges {
   /** The control's name (also an `NgModel` input). */
   readonly name = input<string>();
 
-  private readonly formValidators = inject(FormValidators);
   private readonly validationService = inject(ValidationService);
   private readonly form = inject(ValidationFormDirective, { optional: true });
   private onValidatorChange?: () => void;
@@ -682,14 +724,15 @@ export class ValidationFieldDirective implements Validator, OnChanges {
   private own?: FormModelValidation;
   private registeredWith?: FormModelValidation;
 
-  /** The async half, registered as `NG_ASYNC_VALIDATORS`. */
+  /**
+   * The async half, registered as `NG_ASYNC_VALIDATORS`: the async rules about the property, on the model with all the
+   * form's current values, as the sync half.
+   */
   readonly asyncValidator: AsyncValidator = {
     validate: (control) => {
-      const target = this.target();
+      const validation = this.validation();
       const propertyName = this.propertyName();
-      return target && propertyName
-        ? this.formValidators.createAsyncValidatorFn(() => target.info, propertyName, target.group, target.context)(control)
-        : of(null);
+      return validation && propertyName ? validation.asyncErrorsFor(control, propertyName) : of(null);
     },
   };
 
