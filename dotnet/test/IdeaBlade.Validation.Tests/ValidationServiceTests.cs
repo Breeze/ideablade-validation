@@ -239,6 +239,32 @@ public class ValidationServiceTests
     }
 
     [Fact]
+    public void ModelLevelRulesWithAnIdGetAKeyOfTheirOwn()
+    {
+        var service = CreateService(ModelValidationMetadataMap.Parse("""
+            {"X": {
+              "validators": [
+                {"name": "expression", "id": "A_SET", "context": {"expression": "!!model.a"}},
+                {"name": "expression", "id": "B_SET", "propertyNames": ["b"], "context": {"expression": "!!model.b"}},
+                {"group": "submit", "validators": [{"name": "expression", "id": "C_SET", "context": {"expression": "!!model.c"}}]},
+                {"name": "expression", "context": {"expression": "!!model.d"}}
+              ],
+              "properties": {"a": {"required": true}}
+            }}
+            """));
+        var errors = service.ValidateModel(new Dictionary<string, object?>(), "X");
+        Assert.Equal(new[]
+        {
+            ("expression_A_SET", "A_SET"),
+            ("expression_B_SET", "B_SET"),
+            ("expression_submit_C_SET", "C_SET"),
+            ("expression", "expression"),
+            // Property rules keep name[_group]_propertyName, even with an id (required has the id REQUIRED).
+            ("required_a", "REQUIRED"),
+        }, errors.Select(e => (e.Key, e.Id)));
+    }
+
+    [Fact]
     public void RegistersWithDependencyInjection()
     {
         var services = new ServiceCollection();

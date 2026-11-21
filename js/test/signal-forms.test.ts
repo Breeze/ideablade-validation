@@ -127,7 +127,8 @@ describe('validateWithMetadata (Signal Forms): rules across fields', () => {
           propertyNames: ['startDate', 'endDate'],
           context: { expression: '!model.startDate || !model.endDate || model.startDate < model.endDate', messageTemplate: 'Start must be before end' },
         },
-        { name: 'expression', context: { expression: "model.note !== 'bad'", messageTemplate: 'Not a good booking' } },
+        { name: 'expression', id: 'GOOD_NOTE', context: { expression: "model.note !== 'bad'", messageTemplate: 'Not a good booking' } },
+        { name: 'expression', id: 'SHORT_NOTE', context: { expression: 'model.note.length <= 5', messageTemplate: 'The note is too long' } },
       ],
       properties: {
         reason: { displayName: 'Reason', validators: [{ name: 'required', condition: "model.kind === 'other'" }] },
@@ -204,6 +205,14 @@ describe('validateWithMetadata (Signal Forms): rules across fields', () => {
     const { bookingForm } = createForm({ note: 'bad' });
     expect(messages(bookingForm().errors())).toEqual(['Not a good booking']);
     expect(bookingForm.note().errors()).toEqual([]);
+  });
+
+  it('gives each model-level rule an error kind of its own', () => {
+    const { bookingForm } = createForm({ note: 'bad' });
+    bookingForm.note().value.set('bad, really');
+    expect(bookingForm().errors().map((e) => e.kind)).toEqual(['expression_SHORT_NOTE']);
+    bookingForm.note().value.set('bad');
+    expect(bookingForm().errors().map((e) => e.kind)).toEqual(['expression_GOOD_NOTE']);
   });
 
   it("runs async rules on the form's current values, and re-runs them when another field changes", async () => {

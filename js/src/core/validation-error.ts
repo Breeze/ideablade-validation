@@ -30,7 +30,12 @@ export function getPath(obj: unknown, path: string): unknown {
 /** A single validation failure. */
 export class ValidationError {
   constructor(
-    /** Key of the form `name[_group][_propertyName]`; unique per validator usage on a model. */
+    /**
+     * `name[_group]_propertyName` for a property rule (`required_firstName`), `name[_group][_id]` for a model-level rule
+     * (`expression_END_AFTER_START`; just `expression` without an id). Unique per rule on a model, except for model-level
+     * rules without an id, or property rules on one property, that share a validator name and group: tell those apart by
+     * {@link id}.
+     */
     readonly key: string,
     readonly context: ValidatorFunctionContext,
     readonly validator: Validator,

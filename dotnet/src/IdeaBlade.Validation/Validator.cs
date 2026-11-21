@@ -24,11 +24,16 @@ namespace IdeaBlade.Validation
         /// <summary>Set by the framework to the metadata the validator was created from.</summary>
         public ValidatorMetadata? Metadata { get; set; }
 
+        /// <summary>
+        /// <c>name[_group]_propertyName</c> for a property rule; <c>name[_group][_id]</c> for a model-level rule, so model-level
+        /// rules with the same validator name (several <c>expression</c> rules, say) get keys of their own when they have an <c>id</c>.
+        /// </summary>
         protected string GetKey(ValidationContext? context)
         {
             var key = Name;
             if (!string.IsNullOrEmpty(Group)) key = $"{key}_{Group}";
             if (!string.IsNullOrEmpty(context?.PropertyName)) key = $"{key}_{context!.PropertyName}";
+            else if (!string.IsNullOrEmpty(Metadata?.Id)) key = $"{key}_{Metadata!.Id}";
             return key;
         }
 

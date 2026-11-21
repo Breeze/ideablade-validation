@@ -34,7 +34,7 @@ The core doesn't depend on any persistence layer either. What it needs from one,
 | **Condition** | An expression on a validator: it runs only when the condition is truthy. On a model, a condition decides whether the model is validated at all during entity-store validation. See [expressions.md](expressions.md). |
 | **Group** | `{ "group": "submit", "validators": [...] }`. Groups let you run subsets of rules, for example only the rules for a workflow step. Choose them with `options.predicate`. Grouped validators also get distinct error keys (`required_submit_email`). |
 | **Entity store** | Any source of entities: `{ entities$, getEntities? }`, or `{ changes$, entities(), getEntities? }` for sources that only signal changes. `validateEntityStore` re-validates whenever the entities change, the metadata changes, `options.event$` emits, or `revalidate()` is called, and it coalesces bursts of those changes ([coalescing](#coalescing)). Use `breezeEntityStore(manager)` for Breeze, `signalEntityStore` for Angular signals, and `createEntityStore` for anything else ([below](#writing-an-entity-store)). |
-| **ValidationError** | `key` (`name[_group][_property]`), `id` (from metadata, else `key`), `propertyNames`, `model`, `modelType`, `value`, `errorMessage`, and the full `context`. |
+| **ValidationError** | `key` (`name[_group]_property` for a property rule, `name[_group][_id]` for a model-level one; see [Error keys](metadata.md#error-keys)), `id` (from metadata, else `key`), `propertyNames`, `model`, `modelType`, `value`, `errorMessage`, and the full `context`. |
 
 ## Resolvers
 
@@ -105,6 +105,7 @@ A model-level rule can be about several properties, such as "the start date is b
     "validators": [
       {
         "name": "expression",
+        "id": "START_BEFORE_END",
         "propertyNames": ["startDate", "endDate"],
         "context": { "expression": "model.startDate < model.endDate", "messageTemplate": "The start must be before the end" }
       }
@@ -113,7 +114,7 @@ A model-level rule can be about several properties, such as "the start date is b
 }
 ```
 
-`ValidationError.propertyNames` holds the properties an error is about: the property of a property rule, the properties a model-level rule names, or none for a rule about the model as a whole. `error.isFor('endDate')` tests one. A validator can also set `context.propertyNames` itself.
+`ValidationError.propertyNames` holds the properties an error is about: the property of a property rule, the properties a model-level rule names, or none for a rule about the model as a whole. `error.isFor('endDate')` tests one. A validator can also set `context.propertyNames` itself. Give such rules an `id`: it makes the error key unique (`expression_START_BEFORE_END`), so a field with two model-level `expression` rules shows both errors ([Error keys](metadata.md#error-keys)).
 
 The form integrations validate the whole model, with the current values of all fields, whenever any field changes. Each field shows the errors about its property, so both dates show the rule above, and a change in one re-checks the other. A rule whose `condition` reads another field is re-checked the same way. Errors about no property are the form's own: `modelErrors` on Angular's form directive, and `errorsFor()` without a name in React.
 

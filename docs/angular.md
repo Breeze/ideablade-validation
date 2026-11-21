@@ -158,7 +158,7 @@ export class NameEditorComponent {
 - **Where errors show:** an error shows on the field of each property it is about (`propertyNames`), so a rule spanning two dates shows on both. Errors about the model as a whole, and about properties the form has no field for, show on the field you passed, usually the form's root.
 - **Sync rules** run whenever the model changes, so cross-property rules stay up to date. They also run when the service's entity store changes.
 - **Async rules** run debounced (`debounce`, default 300 ms), once the sync ones pass. They include Breeze's async validators when the rules come from `breezeRuleSource`.
-- **The errors:** `kind` is the framework's error key (`required_firstName`), `message` the error message, and `validationError` the full `ValidationError`.
+- **The errors:** `kind` is the framework's error key (`required_firstName`, or `expression_END_AFTER_START` for a model-level rule with an id; see [Error keys](metadata.md#error-keys)), `message` the error message, and `validationError` the full `ValidationError`.
 
 | Option | Default |
 |---|---|
@@ -226,7 +226,7 @@ There's no attribute to add to each field. The field directive's selector is `[n
 - async rules about the property, with every field's current value too, as the field's async validator;
 - on a Breeze entity, Breeze's own rules for the property, through the `breeze` validator ([breeze.md](breeze.md#on-form-fields)).
 
-Errors about the model as a whole are the form's: `#form="validationForm"` exposes `modelErrors()` (and `errors()`, all of them). The form also re-validates when the service's entity store changes ([Scopes](#scopes)), and on `revalidate()`. The form element can be any element with `ngForm`, such as one card of a list: `<div ngForm [validationModel]="address">`.
+Errors about the model as a whole are the form's: `#form="validationForm"` exposes `modelErrors()` (and `errors()`, all of them). A control's errors are keyed by error key, so give model-level rules an `id`: two `expression` rules about one field without ids share the key `expression`, and the control shows only one of them ([Error keys](metadata.md#error-keys)). The same goes for `track e.key` below. The form also re-validates when the service's entity store changes ([Scopes](#scopes)), and on `revalidate()`. The form element can be any element with `ngForm`, such as one card of a list: `<div ngForm [validationModel]="address">`.
 
 ```html
 <form [validationModel]="booking" #form="validationForm">

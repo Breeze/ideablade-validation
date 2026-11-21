@@ -22,7 +22,12 @@ namespace IdeaBlade.Validation
             Validator = validator;
         }
 
-        /// <summary>Key of the form <c>name[_group][_propertyName]</c>.</summary>
+        /// <summary>
+        /// <c>name[_group]_propertyName</c> for a property rule (<c>required_firstName</c>), <c>name[_group][_id]</c> for a
+        /// model-level rule (<c>expression_END_AFTER_START</c>; just <c>expression</c> without an id), the same keys as on the
+        /// client. Unique per rule on a model, except for model-level rules without an id, or property rules on one property,
+        /// that share a validator name and group: tell those apart by <see cref="Id"/>.
+        /// </summary>
         public string Key { get; }
         public ValidatorFunctionContext Context { get; }
         public ValidatorBase Validator { get; }

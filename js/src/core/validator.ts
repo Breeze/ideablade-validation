@@ -54,6 +54,10 @@ export abstract class ValidatorBase {
     readonly context?: Partial<ValidationContextBase>,
   ) {}
 
+  /**
+   * `name[_group]_propertyName` for a property rule; `name[_group][_id]` for a model-level rule, so model-level rules
+   * with the same validator name (several `expression` rules, say) get keys of their own when they have an `id`.
+   */
   protected getKey(context?: ValidationContext): string {
     let key = this.name;
     if (this.group) {
@@ -61,6 +65,8 @@ export abstract class ValidatorBase {
     }
     if (context?.propertyName) {
       key = `${key}_${context.propertyName}`;
+    } else if (this.metadata?.id) {
+      key = `${key}_${this.metadata.id}`;
     }
     return key;
   }
