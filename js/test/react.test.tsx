@@ -188,6 +188,28 @@ describe('ValidationForm', () => {
     expect(text('form')).toBe('Not a good booking');
   });
 
+  it("runs async rules on the form's current values, and re-runs them when another field changes", async () => {
+    // Taken only in the acme domain: the async rule reads another field.
+    const service = createValidationService({
+      metadata: { Account: { properties: { login: { displayName: 'Login', validators: [{ name: 'available', async: true }] } } } },
+      validators: [
+        asyncValidator('available', (login, { model }) => of(!(login === 'taken' && model.domain === 'acme')).pipe(delay(10)), '%displayName% is taken'),
+      ],
+    });
+    const view = (account: { login: string; domain: string }) => (
+      <ValidationProvider service={service}>
+        <ValidationForm model={account} modelType="Account">
+          <Field name="login" />
+        </ValidationForm>
+      </ValidationProvider>
+    );
+    const { rerender } = render(view({ login: 'taken', domain: 'acme' }));
+    await waitFor(() => expect(screen.getByTestId('login').textContent).toBe('Login is taken'));
+
+    rerender(view({ login: 'taken', domain: 'other' }));
+    await waitFor(() => expect(screen.getByTestId('login').textContent).toBe(''));
+  });
+
   it('gives fields outside a form no errors', () => {
     render(<Field name="x" />);
     expect(screen.getByTestId('x').textContent).toBe('');

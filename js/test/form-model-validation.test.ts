@@ -114,6 +114,62 @@ describe('template-driven forms validate the model as a whole', () => {
   });
 });
 
+describe('template-driven forms: async rules across fields', () => {
+  // Taken only in the acme domain: the async rule reads another field.
+  const accountMetadata = {
+    Account: { properties: { login: { displayName: 'Login', validators: [{ name: 'available', async: true }] } } },
+  };
+
+  class AccountHost {
+    account = { login: '', domain: '' };
+  }
+
+  const TestAccountHost = Component({
+    selector: 'test-account-host',
+    imports: [FormsModule, ValidationFormsDirectives],
+    template: `
+      <form [validationModel]="account" validationModelType="Account">
+        <input name="login" [(ngModel)]="account.login" />
+        <input name="domain" [(ngModel)]="account.domain" />
+      </form>
+    `,
+  })(AccountHost);
+
+  it("runs async rules on the form's current values, and re-runs them when another field changes", async () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        provideValidation({
+          metadata: accountMetadata,
+          validators: [
+            asyncValidator('available', (login, { model }) => Promise.resolve(!(login === 'taken' && model.domain === 'acme')), '%displayName% is taken'),
+          ],
+        }),
+      ],
+    });
+    const fixture = TestBed.createComponent(TestAccountHost);
+    await fixture.whenStable();
+    const control = (name: string) => fixture.debugElement.queryAll(By.directive(NgModel)).find((e) => e.attributes['name'] === name)!.injector.get(NgModel);
+    const messages = (name: string) => Object.values(control(name).errors ?? {}).map((e) => (e as ValidationError).errorMessage);
+    const type = async (name: string, value: string) => {
+      const input = fixture.debugElement.query(By.css(`input[name=${name}]`)).nativeElement as HTMLInputElement;
+      input.value = value;
+      input.dispatchEvent(new Event('input'));
+      await fixture.whenStable();
+    };
+
+    await type('domain', 'acme');
+    await type('login', 'taken');
+    await delay(400);
+    expect(messages('login')).toEqual(['Login is taken']);
+
+    await type('domain', 'other');
+    await delay(400);
+    expect(control('login').valid).toBe(true);
+  });
+});
+
 describe('reactive forms: validateFormGroup', () => {
   it('validates the group as a whole', () => {
     TestBed.resetTestingModule();

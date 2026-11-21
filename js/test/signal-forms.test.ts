@@ -116,3 +116,107 @@ describe('validateWithMetadata (Signal Forms) with from + breezeRuleSource', () 
     expect(nameForm().valid()).toBe(true);
   });
 });
+
+/** Rules that read more than one field: the form validates its whole value, so every field sees the others' values. */
+describe('validateWithMetadata (Signal Forms): rules across fields', () => {
+  const bookingMetadata = {
+    Booking: {
+      validators: [
+        {
+          name: 'expression',
+          propertyNames: ['startDate', 'endDate'],
+          context: { expression: '!model.startDate || !model.endDate || model.startDate < model.endDate', messageTemplate: 'Start must be before end' },
+        },
+        { name: 'expression', context: { expression: "model.note !== 'bad'", messageTemplate: 'Not a good booking' } },
+      ],
+      properties: {
+        reason: { displayName: 'Reason', validators: [{ name: 'required', condition: "model.kind === 'other'" }] },
+        // Taken only in the acme domain: the async rule reads another field.
+        login: { displayName: 'Login', validators: [{ name: 'available', async: true }] },
+      },
+    },
+  };
+
+  interface Booking {
+    startDate: string;
+    endDate: string;
+    kind: string;
+    reason: string;
+    note: string;
+    login: string;
+    domain: string;
+  }
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        provideValidation({
+          metadata: bookingMetadata,
+          validators: [
+            asyncValidator('available', async (login, { model }) => !(login === 'taken' && model.domain === 'acme'), '%displayName% is taken'),
+          ],
+        }),
+      ],
+    });
+  });
+
+  function createForm(initial: Partial<Booking> = {}) {
+    const model = signal<Booking>({ startDate: '2026-01-01', endDate: '2026-01-05', kind: '', reason: '', note: '', login: '', domain: '', ...initial });
+    const bookingForm = TestBed.runInInjectionContext(() =>
+      form(model, (path) => validateWithMetadata(path, { modelType: 'Booking', debounce: 0 })),
+    );
+    return { model, bookingForm };
+  }
+  const messages = (errors: readonly { message?: string }[]) => errors.map((e) => e.message);
+  const settle = async () => {
+    TestBed.tick();
+    await delay(20);
+    TestBed.tick();
+  };
+
+  it('shows a rule about two fields on both, and re-checks both when one changes', () => {
+    const { bookingForm } = createForm();
+    expect(bookingForm.startDate().errors()).toEqual([]);
+
+    bookingForm.startDate().value.set('2026-02-01');
+    expect(messages(bookingForm.startDate().errors())).toEqual(['Start must be before end']);
+    expect(messages(bookingForm.endDate().errors())).toEqual(['Start must be before end']);
+
+    bookingForm.endDate().value.set('2026-03-01');
+    expect(bookingForm.startDate().errors()).toEqual([]);
+    expect(bookingForm.endDate().errors()).toEqual([]);
+  });
+
+  it("re-checks a field whose rule's condition reads another field", () => {
+    const { bookingForm } = createForm();
+    expect(bookingForm.reason().errors()).toEqual([]);
+
+    bookingForm.kind().value.set('other');
+    expect(messages(bookingForm.reason().errors())).toEqual(['Reason is required']);
+
+    bookingForm.reason().value.set('Moving');
+    expect(bookingForm.reason().errors()).toEqual([]);
+  });
+
+  it('reports an error about the model as a whole on the root', () => {
+    const { bookingForm } = createForm({ note: 'bad' });
+    expect(messages(bookingForm().errors())).toEqual(['Not a good booking']);
+    expect(bookingForm.note().errors()).toEqual([]);
+  });
+
+  it("runs async rules on the form's current values, and re-runs them when another field changes", async () => {
+    const { bookingForm } = createForm();
+
+    bookingForm.domain().value.set('acme');
+    bookingForm.login().value.set('taken');
+    await settle();
+    expect(messages(bookingForm.login().errors())).toEqual(['Login is taken']);
+
+    bookingForm.domain().value.set('other');
+    await settle();
+    expect(bookingForm.login().errors()).toEqual([]);
+    expect(bookingForm().valid()).toBe(true);
+  });
+});
