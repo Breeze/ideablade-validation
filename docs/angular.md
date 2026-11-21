@@ -175,7 +175,7 @@ A view model whose properties inherit an entity's rules with [`from`](metadata.m
 
 ## Reactive forms
 
-`validateFormGroup` validates a form group as a whole, as the template-driven directives do ([below](#template-driven-forms)): each control's errors come from validating the model with all the group's current values, and a change in one control re-checks the others. Control names are property names.
+`validateFormGroup` validates a form group as a whole, as the template-driven directives do ([below](#template-driven-forms)): each control's errors come from validating the model with all the group's current values, and a change in one control re-checks the others. Async rules about a control's property run as its async validator, also with all the group's current values: debounced by 300 ms, once its sync rules pass, and again when another control changes. Control names are property names.
 
 ```ts
 private readonly fv = inject(FormValidators);
@@ -223,6 +223,7 @@ There's no attribute to add to each field. The field directive's selector is `[n
 
 - its property's rules, and model-level rules that name it (`propertyNames`, [concepts.md](concepts.md#rules-that-span-properties)), so a "start before end" rule shows on both dates, and a change in one re-checks the other;
 - rules whose `condition` reads another field are re-checked when that field changes;
+- async rules about the property, with every field's current value too, as the field's async validator;
 - on a Breeze entity, Breeze's own rules for the property, through the `breeze` validator ([breeze.md](breeze.md#on-form-fields)).
 
 Errors about the model as a whole are the form's: `#form="validationForm"` exposes `modelErrors()` (and `errors()`, all of them). The form also re-validates when the service's entity store changes ([Scopes](#scopes)), and on `revalidate()`. The form element can be any element with `ngForm`, such as one card of a list: `<div ngForm [validationModel]="address">`.
