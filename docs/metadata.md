@@ -109,7 +109,7 @@ A validator can be a bare name (`"email"`) or an object:
 | Key | Meaning |
 |---|---|
 | `name` | Registered validator name. Required. |
-| `id` | Stable identifier, reported as `ValidationError.id`. Useful for mapping errors to help topics, or for suppressing specific rules. |
+| `id` | Stable identifier, reported as `ValidationError.id`. Useful for mapping errors to help topics, or for suppressing specific rules. A model-level validator's id is also part of its error key ([Error keys](#error-keys)). |
 | `context` | Settings for the validator (`minValue`, `expression`, …) plus `messageTemplate` / `displayName` overrides. |
 | `async` | `true` selects the asynchronous validator registered under `name`. |
 | `condition` | Expression. The validator only runs when it's truthy. Variables: `model`, `value`, `context`, `isClient`, `isServer`, plus the expression scope. |
@@ -128,6 +128,18 @@ service.validateModelSync(order, 'Order', { predicate: (v) => !v.group || v.grou
 ```
 
 The group becomes part of the error key: `required_submit_quantity`.
+
+## Error keys
+
+Each error has a key (`ValidationError.key`, `Key` in .NET), the same on the client and the server. Forms use it to tell errors apart: Angular's reactive and template-driven forms key a control's errors by it, Signal Forms use it as the error's `kind`, and templates can `track` errors by it.
+
+| Rule | Key | Example |
+|---|---|---|
+| Property validator | `name[_group]_property` | `required_firstName`, `required_submit_quantity` |
+| Model-level validator with an `id` | `name[_group]_id` | `expression_END_AFTER_START` |
+| Model-level validator without an `id` | `name[_group]` | `expression` |
+
+So a key is unique per rule on a model, with two exceptions: model-level validators without an `id`, and validators on one property, that share a name and group (two `expression` rules, say). Give model-level validators an `id`; to tell property validators with the same name apart, use `ValidationError.id`, which is the metadata's `id` (or the key when there is none). Validators that report several errors name each one themselves, such as `breeze` (`maxLength_name`, see [breeze.md](breeze.md)) and the .NET data annotations (`required_city`).
 
 ## Inheriting a property's rules (`from`)
 

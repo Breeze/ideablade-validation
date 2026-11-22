@@ -23,6 +23,18 @@ const metadata = {
   Note: {
     properties: { text: { displayName: 'Text', required: true } },
   },
+  Period: {
+    // Two model-level rules with the same validator name, both about `end`.
+    validators: [
+      { name: 'expression', id: 'END_SET', propertyNames: ['end'], context: { expression: '!!model.end', messageTemplate: 'End is required' } },
+      {
+        name: 'expression',
+        id: 'END_AFTER_START',
+        propertyNames: ['end'],
+        context: { expression: 'model.end > model.start', messageTemplate: 'End must follow start' },
+      },
+    ],
+  },
 };
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -34,6 +46,7 @@ class Host {
   tagged = { kind: 'Note', text: '' };
   group: string | undefined = undefined;
   noModel = { name: '' };
+  period: Record<string, unknown> = { start: 1, end: '' };
 }
 
 const TestHost = Component({
@@ -49,6 +62,7 @@ const TestHost = Component({
     <input name="text" [(ngModel)]="note.text" [validationModel]="note" validationModelType="Note" />
     <input name="taggedText" [(ngModel)]="tagged.text" [validationModel]="tagged" validationPropertyName="text" />
     <form><input name="unvalidated" [(ngModel)]="noModel.name" /></form>
+    <form [validationModel]="period" validationModelType="Period"><input name="end" [(ngModel)]="period['end']" /></form>
   `,
 })(Host);
 
@@ -100,6 +114,11 @@ describe('Template-driven forms', () => {
     const errors = control('name').errors!;
     expect(Object.keys(errors)).toEqual(['required_name']);
     expect((errors['required_name'] as ValidationError).propertyNames).toEqual(['name']);
+  });
+
+  it('keeps model-level rules with the same validator name apart', () => {
+    expect(Object.keys(control('end').errors ?? {})).toEqual(['expression_END_SET', 'expression_END_AFTER_START']);
+    expect(messages('end')).toEqual(['End is required', 'End must follow start']);
   });
 
   it('runs async rules as an async validator', async () => {

@@ -234,6 +234,31 @@ describe('ValidationService (sync)', () => {
     expect(noGroups).toEqual([]);
   });
 
+  it('gives model-level rules with an id a key of their own', () => {
+    const s = createValidationService({
+      metadata: {
+        X: {
+          validators: [
+            { name: 'expression', id: 'A_SET', context: { expression: '!!model.a' } },
+            { name: 'expression', id: 'B_SET', propertyNames: ['b'], context: { expression: '!!model.b' } },
+            { group: 'submit', validators: [{ name: 'expression', id: 'C_SET', context: { expression: '!!model.c' } }] },
+            { name: 'expression', context: { expression: '!!model.d' } },
+          ],
+          properties: { a: { required: true } },
+        },
+      },
+    });
+    const errors = s.validateModelSync({}, 'X');
+    expect(errors.map((e) => [e.key, e.id])).toEqual([
+      ['expression_A_SET', 'A_SET'],
+      ['expression_B_SET', 'B_SET'],
+      ['expression_submit_C_SET', 'C_SET'],
+      ['expression', 'expression'],
+      // Property rules keep `name[_group]_propertyName`, even with an id (`required` has the id REQUIRED).
+      ['required_a', 'REQUIRED'],
+    ]);
+  });
+
   it('throws a configuration error for unknown validators', () => {
     const s = createValidationService({ metadata: { X: { validators: ['nope'] } } });
     expect(() => s.validateModelSync({}, 'X')).toThrow(ValidationConfigurationError);
