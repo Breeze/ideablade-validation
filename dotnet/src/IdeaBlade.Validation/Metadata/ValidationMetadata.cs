@@ -308,6 +308,57 @@ namespace IdeaBlade.Validation.Metadata
 
         public PropertyMetadata? GetProperty(string propertyName) => Properties.FirstOrDefault(p => p.PropertyName == propertyName);
 
+        private volatile bool _keysChecked;
+
+        /// <summary>
+        /// Throws a <see cref="ValidationConfigurationException"/> if two of the model's rules would report errors with the
+        /// same key. Errors are told apart by their key: the client's error visibility and form integrations rely on it, and
+        /// the server's errors reach the client by key. The rules compared are the model's as they run: from every metadata
+        /// map, the global validators, <c>extends</c> and <c>from</c>.
+        /// </summary>
+        /// <remarks>
+        /// Two rules that both have a <c>condition</c> are not compared: they may never apply together, such as
+        /// <c>required</c> when one setting is on and <c>required</c> when it is off. The service reports the errors it
+        /// actually gets with the same key (<see cref="ValidationServiceOptions.OnDuplicateErrorKey"/>). The service runs
+        /// this check before it first validates a model of the type; the result is kept until the metadata changes.
+        /// </remarks>
+        public void CheckErrorKeys()
+        {
+            if (_keysChecked) return;
+            var rules = new List<(string Key, ValidatorMetadata Rule, string? PropertyName)>();
+            foreach (var rule in Validators) rules.Add((ValidatorBase.ErrorKey(rule.Name, rule.Group, null, rule.Id), rule, null));
+            foreach (var property in Properties)
+                foreach (var rule in property.Validators)
+                    rules.Add((ValidatorBase.ErrorKey(rule.Name, rule.Group, property.PropertyName, rule.Id), rule, property.PropertyName));
+
+            var clashes = rules
+                .GroupBy(r => r.Key, StringComparer.Ordinal)
+                .Where(g => g.Count() > 1 && g.Any(r => string.IsNullOrWhiteSpace(r.Rule.Condition)))
+                .Select(g => $"'{g.Key}' ({string.Join(", ", g.Select(r => DescribeRule(r.Rule, r.PropertyName)))})")
+                .ToList();
+            if (clashes.Count > 0)
+                throw new ValidationConfigurationException(
+                    $"Model type '{ModelType}' has rules whose errors would share a key, which is how errors are told apart: " +
+                    $"{string.Join("; ", clashes)}. A model-level rule's 'id' is part of its key; a property rule's key is its validator " +
+                    "name, group and property. Give the rules different ids or groups, or combine them into one rule. The rules " +
+                    "may come from several metadata maps, the global validators, 'extends' or 'from'.");
+            _keysChecked = true;
+        }
+
+        /// <summary>A rule as an error message names it: <c>property 'city': 'expression' (id 'CITY_FORMAT', group 'submit')</c>.</summary>
+        private static string DescribeRule(ValidatorMetadata rule, string? propertyName)
+        {
+            var details = new[]
+            {
+                rule.Id != null ? $"id '{rule.Id}'" : null,
+                rule.Group != null ? $"group '{rule.Group}'" : null,
+                !string.IsNullOrWhiteSpace(rule.Condition) ? "with a condition" : null,
+            }.Where(d => d != null);
+            var detail = string.Join(", ", details);
+            var where = propertyName != null ? $"property '{propertyName}'" : "model-level";
+            return detail.Length > 0 ? $"{where}: '{rule.Name}' ({detail})" : $"{where}: '{rule.Name}'";
+        }
+
         public IReadOnlyList<PropertyMetadata> GetAsyncProperties() => Properties.Where(p => p.Validators.Any(v => v.IsAsync)).ToList();
 
         /// <summary>

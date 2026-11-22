@@ -114,6 +114,15 @@ export interface ValidationOptions {
  */
 export type ModelTypeResolver = (model: unknown) => string | undefined;
 
+/** Errors about one model that share a key, reported by {@link ValidationServiceOptions.onDuplicateErrorKey}. */
+export interface DuplicateErrorKeyInfo {
+  model: unknown;
+  modelType: string;
+  key: string;
+  /** The errors with that key, two or more. */
+  errors: ValidationError[];
+}
+
 export interface ValidationServiceOptions {
   /** Providers that add context values per model (Angular: VALIDATOR_CONTEXT_PROVIDER). */
   contextProviders?: readonly ValidatorContextProvider[];
@@ -131,6 +140,15 @@ export interface ValidationServiceOptions {
    */
   asyncTimeout?: number;
   onAsyncTimeout?: (info: { model: unknown; modelType: string; timeout: number }) => void;
+  /**
+   * Called when one validation of a model reports two or more errors with the same key. Errors are told apart by
+   * their key, so all but one of them may be hidden: error visibility, the form integrations and templates that
+   * track errors by key rely on it. The metadata's own rules are checked before they run
+   * ({@link ModelMetadata.checkErrorKeys}); this catches the rest, such as a validator that names its errors itself
+   * (`breeze`) reporting a key a metadata rule reports too, or rules with conditions that apply together.
+   * Default: a `console.warn`, once per model type and key.
+   */
+  onDuplicateErrorKey?: (info: DuplicateErrorKeyInfo) => void;
   /**
    * Coalesces bursts of entity store changes into one validation run. Sources often change many times in a row,
    * such as a query that adds 500 entities with one change event each; without coalescing, each change would
@@ -171,6 +189,7 @@ export class ValidationService {
   private readonly expressionScope: Record<string, unknown>;
   private readonly asyncTimeout: number;
   private readonly onAsyncTimeout?: ValidationServiceOptions['onAsyncTimeout'];
+  private readonly onDuplicateErrorKey: (info: DuplicateErrorKeyInfo) => void;
   private readonly coalesce: Coalesce;
 
   constructor(
@@ -183,6 +202,7 @@ export class ValidationService {
     this.expressionScope = options.expressionScope ?? {};
     this.asyncTimeout = options.asyncTimeout ?? 60_000;
     this.onAsyncTimeout = options.onAsyncTimeout;
+    this.onDuplicateErrorKey = options.onDuplicateErrorKey ?? warnOnce;
     this.coalesce = options.coalesce ?? 0;
     this.entityStoreState = new BehaviorSubject(options.entityStore);
     this.options = options;
@@ -299,6 +319,7 @@ export class ValidationService {
    */
   hasAsyncValidators(modelType: string, predicate: ValidatorPredicate = all): boolean {
     const metadata = this.validationMetadata.getModelMetadata(modelType);
+    metadata.checkErrorKeys();
     const isAsync = (v: ValidatorMetadata) => v.async || !!v.getValidator().validateAsync;
     return (
       metadata.validators.some((v) => isAsync(v) && predicate(v)) ||
@@ -487,12 +508,29 @@ export class ValidationService {
   }
 
   private notify(model: unknown, modelType: string, errors: ValidationError[]): void {
+    this.reportDuplicateKeys(model, modelType, errors);
     this.modelValidated.next({ modelInfo: { entity: model, entityType: modelType }, validationErrors: errors });
+  }
+
+  private reportDuplicateKeys(model: unknown, modelType: string, errors: ValidationError[]): void {
+    if (errors.length < 2) {
+      return;
+    }
+    const byKey = new Map<string, ValidationError[]>();
+    for (const error of errors) {
+      byKey.set(error.key, [...(byKey.get(error.key) ?? []), error]);
+    }
+    for (const [key, same] of byKey) {
+      if (same.length > 1) {
+        this.onDuplicateErrorKey({ model, modelType, key, errors: same });
+      }
+    }
   }
 
   /** The validators to run for a model, with their values and contexts. Applies the predicate and conditions. */
   private plan(model: unknown, modelType: string, options?: ValidationOptions, syncOnly = false): Step[] {
     const metadata: ModelMetadata = this.validationMetadata.getModelMetadata(modelType);
+    metadata.checkErrorKeys();
     const predicate = options?.predicate ?? all;
     const resolver = options?.conditionContextResolver;
 
@@ -552,6 +590,22 @@ interface Step {
   validator: Validator;
   value: unknown;
   context: ValidationContext;
+}
+
+/** Model types and keys already warned about, so a form that validates on every keystroke warns once. */
+const warned = new Set<string>();
+
+function warnOnce({ modelType, key, errors }: DuplicateErrorKeyInfo): void {
+  const id = `${modelType} ${key}`;
+  if (warned.has(id)) {
+    return;
+  }
+  warned.add(id);
+  console.warn(
+    `@ideablade/validation: ${errors.length} errors about one '${modelType}' share the key '${key}' (${errors.map((e) => `"${e.errorMessage}"`).join(', ')}). ` +
+      'Errors are told apart by key, so all but one may be hidden. Give the rules different ids or groups, or check which ' +
+      'validator reports the key twice. See "Error keys" in docs/metadata.md.',
+  );
 }
 
 function runSync(step: Step): SyncValidationOutcome {

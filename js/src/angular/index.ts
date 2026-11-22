@@ -84,12 +84,12 @@ export const VALIDATION_RULE_SOURCE = new InjectionToken<RuleSource[]>('IdeaBlad
 export const VALIDATION_EXPRESSION_SCOPE = new InjectionToken<Record<string, unknown>[]>('IdeaBlade.ValidationExpressionScope');
 /** Replaces the default safe expression evaluator. */
 export const VALIDATION_EXPRESSION_EVALUATOR = new InjectionToken<ExpressionEvaluator>('IdeaBlade.ValidationExpressionEvaluator');
-/** Service options (async timeout, coalescing). */
-export const VALIDATION_SERVICE_OPTIONS = new InjectionToken<Pick<ValidationServiceOptions, 'asyncTimeout' | 'onAsyncTimeout' | 'coalesce'>>(
+/** Service options (async timeout, coalescing, duplicate error keys). */
+export const VALIDATION_SERVICE_OPTIONS = new InjectionToken<Pick<ValidationServiceOptions, 'asyncTimeout' | 'onAsyncTimeout' | 'coalesce' | 'onDuplicateErrorKey'>>(
   'IdeaBlade.ValidationServiceOptions',
 );
 
-export interface ValidationConfig extends Pick<ValidationServiceOptions, 'asyncTimeout' | 'onAsyncTimeout' | 'coalesce'> {
+export interface ValidationConfig extends Pick<ValidationServiceOptions, 'asyncTimeout' | 'onAsyncTimeout' | 'coalesce' | 'onDuplicateErrorKey'> {
   /** Metadata maps (more can be added with {@link provideValidationMetadata} or `ValidationMetadata.setMetadata`). */
   metadata?: ModelValidationMetadataLike;
   /** Additional validator factories. */
@@ -136,7 +136,7 @@ export function provideValidation(config: ValidationConfig = {}): EnvironmentPro
         }),
     },
     { provide: FormValidators, useFactory: () => new FormValidators(inject(ValidationService)) },
-    { provide: VALIDATION_SERVICE_OPTIONS, useValue: { asyncTimeout: config.asyncTimeout, onAsyncTimeout: config.onAsyncTimeout, coalesce: config.coalesce } },
+    { provide: VALIDATION_SERVICE_OPTIONS, useValue: { asyncTimeout: config.asyncTimeout, onAsyncTimeout: config.onAsyncTimeout, coalesce: config.coalesce, onDuplicateErrorKey: config.onDuplicateErrorKey } },
   ];
   if (config.includeDefaultValidators ?? true) {
     providers.push(...provideValidators(...defaultValidators));

@@ -131,7 +131,7 @@ The group becomes part of the error key: `required_submit_quantity`.
 
 ## Error keys
 
-Each error has a key (`ValidationError.key`, `Key` in .NET), the same on the client and the server. Forms use it to tell errors apart: Angular's reactive and template-driven forms key a control's errors by it, Signal Forms use it as the error's `kind`, and templates can `track` errors by it.
+Each error has a key (`ValidationError.key`, `Key` in .NET), the same on the client and the server. Errors are told apart by it: Angular's reactive and template-driven forms key a control's errors by it, Signal Forms use it as the error's `kind`, error visibility remembers a new model's first errors by it ([concepts.md](concepts.md#showing-errors-error-visibility)), and templates can `track` errors by it. So two errors about one model must not share a key: a form would keep one of them, and error visibility could hide the other.
 
 | Rule | Key | Example |
 |---|---|---|
@@ -139,7 +139,16 @@ Each error has a key (`ValidationError.key`, `Key` in .NET), the same on the cli
 | Model-level validator with an `id` | `name[_group]_id` | `expression_END_AFTER_START` |
 | Model-level validator without an `id` | `name[_group]` | `expression` |
 
-So a key is unique per rule on a model, with two exceptions: model-level validators without an `id`, and validators on one property, that share a name and group (two `expression` rules, say). Give model-level validators an `id`; to tell property validators with the same name apart, use `ValidationError.id`, which is the metadata's `id` (or the key when there is none). Validators that report several errors name each one themselves, such as `breeze` (`maxLength_name`, see [breeze.md](breeze.md)) and the .NET data annotations (`required_city`).
+Two rules share a key when they have the same validator name and group and are either model-level rules without an `id` (or with the same one), or rules on the same property: a property rule's `id` is not part of its key, so two `expression` rules on `city` are both `expression_city`. Give model-level rules an `id`; put a second rule of the same name on a property in another group, or combine the two into one rule. `ValidationError.id` is the metadata's `id` (or the key when there is none), for telling such errors apart in code. Validators that report several errors name each one themselves, such as `breeze` (`maxLength_name`, see [breeze.md](breeze.md)) and the .NET data annotations (`required_city`).
+
+**Both checked, in two places:**
+
+- **Before a model type is first validated**, the service compares the keys of its rules as they run: from every metadata map, the global validators, `extends` and `from`. A clash throws `ValidationConfigurationError` (`ValidationConfigurationException` in .NET), naming the key and the rules, for example `'expression' (model-level: 'expression', model-level: 'expression')`. It's checked again after the metadata changes. Two rules that both have a `condition` are not compared, since they may never apply together (`required` when a setting is on, and `required` when it is off).
+- **After each validation**, two errors about one model with the same key are reported to `onDuplicateErrorKey` (`OnDuplicateErrorKey` in .NET, a service option). That catches what the metadata can't show: two conditional rules that do apply together, and a validator that names its own errors reporting a key a metadata rule reports too, such as `required: true` on a property that `breeze` or a `[Required]` annotation already requires. By default it warns once per model type and key, with `console.warn` (`Trace.TraceWarning` in .NET). Pass your own handler to log it elsewhere, or to throw in tests:
+
+```ts
+createValidationService({ metadata, onDuplicateErrorKey: ({ modelType, key }) => { throw new Error(`${modelType}: ${key} twice`); } });
+```
 
 ## Inheriting a property's rules (`from`)
 

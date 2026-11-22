@@ -17,10 +17,11 @@ const metadata = {
     validators: [
       {
         name: 'expression',
+        id: 'START_BEFORE_END',
         propertyNames: ['startDate', 'endDate'],
         context: { expression: '!model.startDate || !model.endDate || model.startDate < model.endDate', messageTemplate: 'Start must be before end' },
       },
-      { name: 'expression', context: { expression: "model.note !== 'bad'", messageTemplate: 'Not a good booking' } },
+      { name: 'expression', id: 'GOOD_BOOKING', context: { expression: "model.note !== 'bad'", messageTemplate: 'Not a good booking' } },
     ],
     properties: {
       reason: { displayName: 'Reason', validators: [{ name: 'required', condition: "model.kind === 'other'" }] },

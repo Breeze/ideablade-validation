@@ -88,8 +88,8 @@ public class PropertyNamesTests
                     {
                       "Booking": {
                         "validators": [
-                          { "name": "expression", "propertyNames": ["startDate", "endDate"], "context": { "expression": "model.startDate < model.endDate", "messageTemplate": "Start must be before end" } },
-                          { "name": "expression", "context": { "expression": "false", "messageTemplate": "Model-wide" } }
+                          { "name": "expression", "id": "START_BEFORE_END", "propertyNames": ["startDate", "endDate"], "context": { "expression": "model.startDate < model.endDate", "messageTemplate": "Start must be before end" } },
+                          { "name": "expression", "id": "MODEL_WIDE", "context": { "expression": "false", "messageTemplate": "Model-wide" } }
                         ],
                         "properties": { "note": { "required": true } }
                       }

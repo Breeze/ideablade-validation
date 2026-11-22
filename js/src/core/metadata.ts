@@ -15,7 +15,7 @@ import {
   isModelTypeKey,
   isValidatorGroupConfig,
 } from './metadata-config.js';
-import type { Validator, ValidatorFactory } from './validator.js';
+import { type Validator, type ValidatorFactory, errorKey } from './validator.js';
 
 /** Thrown for metadata that cannot be honoured (unknown validator, failing condition, ...). */
 export class ValidationConfigurationError extends Error {
@@ -294,6 +294,45 @@ export class ModelMetadata {
     return this.properties.find((p) => p.propertyName === propertyName);
   }
 
+  private keysChecked = false;
+
+  /**
+   * Throws a {@link ValidationConfigurationError} if two of the model's rules would report errors with the same key.
+   * Errors are told apart by their key: error visibility, the form integrations and templates that track errors all
+   * rely on it, and a second error with the same key is hidden or dropped without a word. The rules compared are the
+   * model's as they run: from every metadata map, the global validators, `extends` and `from`.
+   *
+   * Two rules that both have a `condition` are not compared: they may never apply together, such as `required` when
+   * one setting is on and `required` when it is off. The service reports the errors it actually gets with the same key
+   * ({@link ValidationServiceOptions.onDuplicateErrorKey}). The service runs this check before it first validates a
+   * model of the type; the result is kept until the metadata changes.
+   */
+  checkErrorKeys(): void {
+    if (this.keysChecked) {
+      return;
+    }
+    const rules = new Map<string, { rule: ValidatorMetadata; propertyName?: string }[]>();
+    const add = (rule: ValidatorMetadata, propertyName?: string) => {
+      const key = errorKey(rule.name, rule.group, propertyName, rule.id);
+      rules.set(key, [...(rules.get(key) ?? []), { rule, propertyName }]);
+    };
+    this.validators.forEach((rule) => add(rule));
+    this.properties.forEach((property) => property.validators.forEach((rule) => add(rule, property.propertyName)));
+
+    const clashes = [...rules]
+      .filter(([, same]) => same.length > 1 && same.some((r) => !r.rule.condition))
+      .map(([key, same]) => `'${key}' (${same.map((r) => describeRule(r.rule, r.propertyName)).join(', ')})`);
+    if (clashes.length > 0) {
+      throw new ValidationConfigurationError(
+        `Model type '${this.modelType}' has rules whose errors would share a key, which is how errors are told apart: ` +
+          `${clashes.join('; ')}. A model-level rule's 'id' is part of its key; a property rule's key is its validator ` +
+          `name, group and property. Give the rules different ids or groups, or combine them into one rule. The rules ` +
+          `may come from several metadata maps, the global validators, 'extends' or 'from'.`,
+      );
+    }
+    this.keysChecked = true;
+  }
+
   getAsyncProperties(): PropertyMetadata[] {
     return this.properties.filter((p) => p.validators.some((v) => v.async));
   }
@@ -453,6 +492,14 @@ export class ValidationMetadata {
     const list = Array.isArray(metadata) ? metadata : [metadata];
     this.setMetadata([...this.maps, ...list.flatMap((m) => (Array.isArray(m) ? m : [m]))]);
   }
+}
+
+/** A rule as an error message names it: `property 'city': 'expression' (id 'CITY_FORMAT', group 'submit')`. */
+function describeRule(rule: ValidatorMetadata, propertyName?: string): string {
+  const details = [rule.id ? `id '${rule.id}'` : '', rule.group ? `group '${rule.group}'` : '', rule.condition ? 'with a condition' : '']
+    .filter(Boolean)
+    .join(', ');
+  return `${propertyName ? `property '${propertyName}'` : 'model-level'}: '${rule.name}'${details ? ` (${details})` : ''}`;
 }
 
 function lastDefined<T>(values: (T | undefined)[]): T | undefined {

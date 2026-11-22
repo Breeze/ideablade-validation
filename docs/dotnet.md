@@ -35,7 +35,7 @@ builder.Services.AddIdeaBladeValidation(v => v
 | `AddDataAnnotations(name = "dataAnnotations")` | Registers `DataAnnotationsValidator` under `name` ([below](#data-annotations)) |
 | `AddRuleSource(source)` / `AddRuleSource<T>()` | `IValidationRuleSource`: rules outside the metadata, inherited through `from` ([concepts.md](concepts.md#rule-sources)) |
 | `AddExpressionFunction(name, delegate)` | A trusted function callable from expressions |
-| `Configure(Action<ValidationServiceOptions>)` | `AsyncTimeout`, `OnAsyncTimeout`, `ModelTypeResolver`, `NamingConvention` ([below](#property-names)), `ExpressionScope` |
+| `Configure(Action<ValidationServiceOptions>)` | `AsyncTimeout`, `OnAsyncTimeout`, `OnDuplicateErrorKey` ([Error keys](metadata.md#error-keys)), `ModelTypeResolver`, `NamingConvention` ([below](#property-names)), `ExpressionScope` |
 | `ConfigureExpressions(Action<SafeExpressionEvaluatorOptions>)` | `Globals`, `AllowedMethods`, `MaxSteps`, `MaxCallDepth`, `CacheSize` |
 | `UseExpressionEvaluator(sp => evaluator)` | Replace the expression engine |
 
