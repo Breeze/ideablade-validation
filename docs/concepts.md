@@ -145,6 +145,8 @@ The form integrations feed it: they report each validation and each touch, and o
 
 Models are told apart by identity, and errors by their key, so give model-level rules an `id` ([Error keys](metadata.md#error-keys)). A form that replaces its model with a copy on every change (Signal Forms, immutable React state) carries the state from copy to copy; the integrations do that for you.
 
+> **In TempHire:** the resource management screen of both clients. A new resource, or an address or phone number added to one, is not red when it appears; its errors show as the user gets to the fields. Save stays enabled: with rules broken, it shows every error and says why nothing was saved. Loaded resources show their errors at once. See [`resource-mgt.component.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/resource-mgt/resource-mgt.component.ts) (Angular) and [`ResourceMgt.tsx`](https://github.com/Breeze/temphire.react/blob/main/client/src/app/resource-mgt/ResourceMgt.tsx) (React).
+
 ## Rule sources
 
 Not every rule lives in the validation metadata. Data frameworks keep their own: Breeze builds `required` and `maxLength` validators from the server model's `[Required]` and `[StringLength]` attributes, and an ORM or a schema registry knows column lengths. For entities that's fine when a validator already runs those rules on the entity, as the `breeze` validator does for Breeze entities. A **view model** that edits some of an entity's properties has no such link.

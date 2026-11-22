@@ -110,6 +110,8 @@ const orderErrors = useShownErrors(order, result?.validationErrors.filter((e) =>
 
 To give such errors a baseline when no form validates their model, report the entity store validation to the visibility: `useEffect(() => { if (result) visibility.observeEntities(result); }, [visibility, result])`.
 
+> **In TempHire:** [`ResourceMgt.tsx`](https://github.com/Breeze/temphire.react/blob/main/client/src/app/resource-mgt/ResourceMgt.tsx) creates the visibility with `breezeIsNew`, reports the unit of work's validation to it with `observeEntities`, wraps the detail in an `ErrorVisibilityProvider`, and calls `revealAll()` when Save finds errors. The inputs in [`EntityFields.tsx`](https://github.com/Breeze/temphire.react/blob/main/client/src/app/core/validation/EntityFields.tsx) call `markTouched` on change and blur, and [`ResourceAddressList.tsx`](https://github.com/Breeze/temphire.react/blob/main/client/src/app/resource-mgt/sections/ResourceAddressList.tsx) shows the "at least one address" message with `useShownErrors`.
+
 ## Scopes: `useValidationScope(entityStore)`
 
 A validation service has one entity store, the entities of its scope, such as a unit of work's ([concepts.md](concepts.md#scopes-a-service-and-its-entity-store)). `useValidationScope` returns a service with the nearest provider's metadata and options and its own store; provide it to the components of the scope:
