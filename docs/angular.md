@@ -336,3 +336,5 @@ readonly validation = this.fv.validateFormGroup(this.form, () => ({ entity: this
 protected readonly shownErrors = shownErrors;
 // template: @for (e of shownErrors(nameForm.firstName().errors()); track e.kind) { <small>{{ e.message }}</small> }
 ```
+
+> **In TempHire:** [`resource-mgt.component.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/resource-mgt/resource-mgt.component.ts) provides `provideErrorVisibility({ isNew: breezeIsNew, watchEntityStore: true })` for the resource screen, and calls `revealAll()` when Save finds errors. [`field-errors.directive.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/core/validation/field-errors.directive.ts) shows each field's `shownErrors()` as its `title` and PrimeNG's `[invalid]`. [`resource-address-list.component.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/resource-mgt/sections/resource-address-list.component.ts) filters the "at least one address" message with `injectErrorVisibility()`, so it appears on a save attempt.

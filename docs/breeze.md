@@ -137,6 +137,8 @@ new ErrorVisibility({ isNew: breezeIsNew });
 // Angular: provideErrorVisibility({ isNew: breezeIsNew })
 ```
 
+> **In TempHire:** both clients' resource screens use it, so a resource opened for editing shows its errors at once, and a new one waits: [`resource-mgt.component.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/resource-mgt/resource-mgt.component.ts) (Angular), [`ResourceMgt.tsx`](https://github.com/Breeze/temphire.react/blob/main/client/src/app/resource-mgt/ResourceMgt.tsx) (React).
+
 ## Single entities and forms: the manager as the entity store
 
 `store(type)` in expressions, and the `unique` validator that depends on it, need to see an entity's siblings. Give the validation service of the scope its `EntityManager` as its [entity store](concepts.md#scopes-a-service-and-its-entity-store): single entities and forms validated by that service then see the manager's live entities (without deleted or detached ones), and the forms re-validate when anything in the manager changes.
