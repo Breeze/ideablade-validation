@@ -63,8 +63,8 @@ export class ErrorVisibility {
 
   /**
    * Reports a validation of `model` with the errors about it. The first one sets the model's baseline; later ones drop
-   * the baseline errors that went away. A form whose errors are validated on a view of the model passes the model
-   * itself.
+   * the baseline errors that went away. Report the errors of the model itself, not of a form's view of it: a form
+   * that has just switched to another model may still show the old one's values.
    */
   observe(model: unknown, errors: readonly ValidationError[]): void {
     if (!isObject(model)) {

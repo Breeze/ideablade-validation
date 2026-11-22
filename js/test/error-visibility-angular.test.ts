@@ -129,6 +129,43 @@ describe('ErrorVisibility with template-driven forms', () => {
   });
 });
 
+class SwitchingHost {
+  // A saved booking first, as when a screen shows an existing record before the user adds one.
+  booking: Booking & { saved?: boolean } = { name: 'Ann', city: 'Seattle', startDate: '', endDate: '', saved: true };
+}
+
+const TestSwitchingHost = Component({
+  selector: 'test-switching-host',
+  imports: [FormsModule, ValidationFormsDirectives],
+  providers: [provideErrorVisibility({ isNew: (model) => !(model as { saved?: boolean }).saved })],
+  template: `
+    <form [validationModel]="booking" validationModelType="Booking">
+      <input name="name" [(ngModel)]="booking.name" />
+      <input name="city" [(ngModel)]="booking.city" />
+    </form>
+  `,
+})(SwitchingHost);
+
+describe('ErrorVisibility when a template-driven form switches to a new model', () => {
+  it("takes the new model's first errors from the model, not from the controls still showing the old one", async () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [TestSwitchingHost], providers: [provideZonelessChangeDetection(), provideValidation({ metadata })] });
+    const fixture = TestBed.createComponent(TestSwitchingHost);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const field = (name: string) => fixture.debugElement.query(By.css(`input[name="${name}"]`)).injector.get(ValidationFieldDirective);
+
+    // The controls still hold Ann's values when the form first validates the new booking.
+    fixture.componentInstance.booking = newBooking();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(messagesOf(field('name').errors())).toEqual(['Name is required']);
+    expect(field('name').shownErrors()).toEqual([]);
+    expect(field('city').shownErrors()).toEqual([]);
+  });
+});
+
 describe('ErrorVisibility with reactive forms', () => {
   it('reports touches and validations, and gives the errors to show', () => {
     TestBed.resetTestingModule();
