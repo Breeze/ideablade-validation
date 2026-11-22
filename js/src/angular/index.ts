@@ -461,6 +461,8 @@ export class FormModelValidation {
   private refreshing = false;
   private storeChanges?: Subscription;
   private readonly state = signal<readonly ValidationError[]>([]);
+  /** The model the controls' touched and dirty flags belong to: see {@link followModel}. */
+  private model?: unknown;
 
   /** All errors of the latest validation. */
   readonly errors: Signal<readonly ValidationError[]> = this.state.asReadonly();
@@ -521,6 +523,7 @@ export class FormModelValidation {
   }
 
   private reportTouch(control: AbstractControl): void {
+    this.followModel();
     const entry = this.controls.get(control);
     if (entry && (control.dirty || control.touched)) {
       this.markTouched(entry.propertyName);
@@ -573,6 +576,7 @@ export class FormModelValidation {
    * controls edit the same property, `control`'s value is the one used.
    */
   validate(control?: AbstractControl): ValidationError[] {
+    this.followModel();
     const target = this.target();
     if (!target || target.info.entity == null) {
       return [];
@@ -610,6 +614,29 @@ export class FormModelValidation {
       context: { ...context, originalModel: info.entity },
     });
     this.visibility.observe(info.entity, errors);
+  }
+
+  /**
+   * Clears the controls' touched and dirty flags when the form has moved on to another model, before anything reads
+   * them. Angular keeps them when `[validationModel]` changes, and writing the new model's values into the controls
+   * emits events: a field the user had left on the record shown before then counted as touched on the new one, and a
+   * new record showed that field's error at once. Models are told apart by identity, as {@link ErrorVisibility} tells
+   * them apart; a target that returns a new object for every validation would reset the flags every time.
+   */
+  private followModel(): void {
+    const entity = this.target()?.info.entity;
+    if (entity === this.model) {
+      return;
+    }
+    const previous = this.model;
+    this.model = entity;
+    if (previous === undefined) {
+      return; // the form's first model: nothing to carry over
+    }
+    for (const control of this.controls.keys()) {
+      control.markAsUntouched();
+      control.markAsPristine();
+    }
   }
 
   /** Re-validates every control, e.g. after the model changed in a way nothing reported. */

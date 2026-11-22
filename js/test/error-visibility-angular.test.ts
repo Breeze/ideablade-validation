@@ -148,6 +148,22 @@ const TestSwitchingHost = Component({
   `,
 })(SwitchingHost);
 
+class SignalSwitchingHost {
+  readonly booking = signal<Booking & { saved?: boolean }>({ name: 'Ann', city: 'Seattle', startDate: '', endDate: '', saved: true });
+}
+
+const TestSignalSwitchingHost = Component({
+  selector: 'test-signal-switching-host',
+  imports: [FormsModule, ValidationFormsDirectives],
+  providers: [provideErrorVisibility({ isNew: (model) => !(model as { saved?: boolean }).saved })],
+  template: `
+    <form [validationModel]="booking()" validationModelType="Booking">
+      <input name="name" [(ngModel)]="booking().name" />
+      <input name="city" [(ngModel)]="booking().city" />
+    </form>
+  `,
+})(SignalSwitchingHost);
+
 describe('ErrorVisibility when a template-driven form switches to a new model', () => {
   it("takes the new model's first errors from the model, not from the controls still showing the old one", async () => {
     TestBed.resetTestingModule();
@@ -164,6 +180,49 @@ describe('ErrorVisibility when a template-driven form switches to a new model', 
 
     expect(messagesOf(field('name').errors())).toEqual(['Name is required']);
     expect(field('name').shownErrors()).toEqual([]);
+    expect(field('city').shownErrors()).toEqual([]);
+  });
+
+  // The booking in a signal, as an app holds the record on screen. (Assigning a plain property after a DOM event does
+  // not re-render a zoneless test host, so the form would never see the switch.)
+  async function switchingFixture() {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [TestSignalSwitchingHost], providers: [provideZonelessChangeDetection(), provideValidation({ metadata })] });
+    const fixture = TestBed.createComponent(TestSignalSwitchingHost);
+    await fixture.whenStable();
+    const element = (name: string) => fixture.debugElement.query(By.css(`input[name="${name}"]`));
+    const field = (name: string) => element(name).injector.get(ValidationFieldDirective);
+    const leave = async (name: string) => {
+      element(name).nativeElement.dispatchEvent(new Event('blur'));
+      await fixture.whenStable();
+    };
+    const switchTo = async (booking: Booking) => {
+      fixture.componentInstance.booking.set(booking);
+      await fixture.whenStable();
+    };
+    return { field, leave, switchTo };
+  }
+
+  // Regression: Angular keeps a control's touched flag when the form moves on to another model. A field the user had
+  // left on the record shown before counted as touched on the new one, which showed its error at once ("the summary is
+  // red when adding a resource, sometimes": whenever the user had been in that field).
+  it('does not count a field left on the previous model as touched on the new one', async () => {
+    const { field, leave, switchTo } = await switchingFixture();
+    await leave('name'); // on Ann's saved booking
+
+    await switchTo(newBooking());
+
+    expect(messagesOf(field('name').errors())).toEqual(['Name is required']);
+    expect(field('name').shownErrors()).toEqual([]);
+  });
+
+  it('counts a field left on the new model', async () => {
+    const { field, leave, switchTo } = await switchingFixture();
+    await leave('name');
+    await switchTo(newBooking());
+
+    await leave('name'); // now on the new booking
+    expect(messagesOf(field('name').shownErrors())).toEqual(['Name is required']);
     expect(field('city').shownErrors()).toEqual([]);
   });
 });
