@@ -44,6 +44,24 @@ export interface ValidatorFactory {
   fn: (group: string | undefined, context?: Partial<ValidationContextBase>) => Validator;
 }
 
+/**
+ * The key of a rule's errors: `name[_group]_propertyName` for a property rule, `name[_group][_id]` for a model-level
+ * rule. A property rule's `id` is not part of it. The duplicate key check computes keys with this too, so the two
+ * cannot disagree.
+ */
+export function errorKey(name: string, group: string | undefined, propertyName: string | undefined, id: string | undefined): string {
+  let key = name;
+  if (group) {
+    key = `${key}_${group}`;
+  }
+  if (propertyName) {
+    key = `${key}_${propertyName}`;
+  } else if (id) {
+    key = `${key}_${id}`;
+  }
+  return key;
+}
+
 /** Base class with key/context helpers shared by all validators. */
 export abstract class ValidatorBase {
   metadata?: ValidatorMetadata;
@@ -59,16 +77,7 @@ export abstract class ValidatorBase {
    * with the same validator name (several `expression` rules, say) get keys of their own when they have an `id`.
    */
   protected getKey(context?: ValidationContext): string {
-    let key = this.name;
-    if (this.group) {
-      key = `${key}_${this.group}`;
-    }
-    if (context?.propertyName) {
-      key = `${key}_${context.propertyName}`;
-    } else if (this.metadata?.id) {
-      key = `${key}_${this.metadata.id}`;
-    }
-    return key;
+    return errorKey(this.name, this.group, context?.propertyName, this.metadata?.id);
   }
 
   protected getValidatorFunctionContext(value: unknown, context?: ValidationContext): ValidatorFunctionContext {

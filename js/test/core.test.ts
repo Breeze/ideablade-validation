@@ -7,8 +7,10 @@ import {
   type ModelValidationMetadataMap,
   type RuleSource,
   SyncValidator,
+  type Validator,
   type ValidatorFactory,
   ValidationConfigurationError,
+  ValidationError,
   asyncValidator,
   createValidationService,
   entityStoreOf,
@@ -495,6 +497,163 @@ describe('ValidationService (entity store)', () => {
     service.setEntityStore(undefined);
     sub.unsubscribe();
     expect(results).toEqual([0, 2, 0, 0]);
+  });
+});
+
+describe('error keys are unique per model', () => {
+  const twoExpressions = (a: object, b: object): ModelValidationMetadataMap => ({
+    Order: {
+      validators: [
+        { name: 'expression', ...a, context: { expression: 'model.a', messageTemplate: 'A' } },
+        { name: 'expression', ...b, context: { expression: 'model.b', messageTemplate: 'B' } },
+      ],
+    },
+  });
+
+  it('rejects two model-level rules without an id, naming the key and both rules', () => {
+    const service = createValidationService({ metadata: twoExpressions({}, {}) });
+    expect(() => service.validateModelSync({}, 'Order')).toThrow(ValidationConfigurationError);
+    expect(() => service.validateModelSync({}, 'Order')).toThrow(
+      /Model type 'Order'.*'expression' \(model-level: 'expression', model-level: 'expression'\)/,
+    );
+    // Every way in is checked, not only validation.
+    expect(() => service.hasAsyncValidators('Order')).toThrow(ValidationConfigurationError);
+  });
+
+  it('tells model-level rules apart by id, and property rules by group but not by id', () => {
+    const withIds = createValidationService({ metadata: twoExpressions({ id: 'A' }, { id: 'B' }) });
+    expect(withIds.validateModelSync({}, 'Order').map((e) => e.key)).toEqual(['expression_A', 'expression_B']);
+
+    const propertyRules = (second: object): ModelValidationMetadataMap => ({
+      Order: {
+        properties: {
+          code: {
+            validators: [
+              { name: 'expression', id: 'X', context: { expression: 'model.code != 1' } },
+              { name: 'expression', context: { expression: 'model.code != 2' }, ...second },
+            ],
+          },
+        },
+      },
+    });
+    // The key of a property rule has no id: both are 'expression_code'.
+    expect(() => createValidationService({ metadata: propertyRules({ id: 'Y' }) }).validateModelSync({}, 'Order')).toThrow(
+      /'expression_code' \(property 'code': 'expression' \(id 'X'\), property 'code': 'expression' \(id 'Y'\)\)/,
+    );
+    // Another group is another key.
+    const grouped = createValidationService({
+      metadata: {
+        Order: {
+          properties: {
+            code: {
+              validators: [
+                { name: 'expression', context: { expression: 'model.code != 1' } },
+                { group: 'submit', validators: [{ name: 'expression', context: { expression: 'model.code != 2' } }] },
+              ],
+            },
+          },
+        },
+      },
+    });
+    expect(grouped.validateModelSync({ code: 1 }, 'Order').map((e) => e.key)).toEqual(['expression_code']);
+    expect(grouped.validateModelSync({ code: 2 }, 'Order').map((e) => e.key)).toEqual(['expression_submit_code']);
+  });
+
+  it('compares the rules as they run: merged maps, global validators, extends and from', () => {
+    const required = { validators: ['required'] };
+    // The same rule in two metadata maps, such as the server's and the client's.
+    const merged = createValidationService({ metadata: [{ Order: { properties: { code: required } } }, { Order: { properties: { code: required } } }] });
+    expect(() => merged.validateModelSync({}, 'Order')).toThrow(/'required_code'/);
+
+    // A model's own rule repeating a global one.
+    const hasId = { name: 'expression', id: 'HAS_ID', context: { expression: 'model.id' } };
+    const global = createValidationService({ metadata: { global: { validators: [hasId] }, Order: { validators: [hasId] } } });
+    expect(() => global.validateModelSync({}, 'Order')).toThrow(/'expression_HAS_ID'/);
+
+    // A derived type repeating its parent's property rule. The parent itself is fine.
+    const extended = createValidationService({ metadata: { Order: { properties: { code: required } }, BigOrder: { extends: 'Order', properties: { code: required } } } });
+    expect(() => extended.validateModelSync({}, 'BigOrder')).toThrow(/'required_code'/);
+    expect(extended.validateModelSync({}, 'Order').map((e) => e.key)).toEqual(['required_code']);
+
+    // A property repeating a rule it inherits with `from`. `required: true` is fine: it adds the rule only if missing.
+    const from = (code: object) =>
+      createValidationService({ metadata: { Order: { properties: { code: required } }, OrderEdit: { properties: { code: { from: 'Order', ...code } } } } });
+    expect(() => from(required).validateModelSync({}, 'OrderEdit')).toThrow(/'required_code'/);
+    expect(from({ required: true }).validateModelSync({}, 'OrderEdit').map((e) => e.key)).toEqual(['required_code']);
+  });
+
+  it('leaves two rules that both have a condition to the validation, which reports keys that do clash', () => {
+    const rule = (condition?: string) => ({ name: 'required', ...(condition ? { condition } : {}) });
+    const metadata = (a?: string, b?: string): ModelValidationMetadataMap => ({ Order: { properties: { code: { validators: [rule(a), rule(b)] } } } });
+
+    // A rule without a condition clashes whenever the other one applies.
+    expect(() => createValidationService({ metadata: metadata(undefined, 'model.big') }).validateModelSync({}, 'Order')).toThrow(/'required_code'/);
+
+    const onDuplicateErrorKey = vi.fn();
+    const service = createValidationService({ metadata: metadata('model.big', '!model.small'), onDuplicateErrorKey });
+    // Only one applies: one error, nothing to report.
+    expect(service.validateModelSync({ big: true, small: true }, 'Order')).toHaveLength(1);
+    expect(onDuplicateErrorKey).not.toHaveBeenCalled();
+    // Both apply: two errors with one key.
+    const model = { big: true, small: false };
+    const errors = service.validateModelSync(model, 'Order');
+    expect(errors.map((e) => e.key)).toEqual(['required_code', 'required_code']);
+    expect(onDuplicateErrorKey).toHaveBeenCalledExactlyOnceWith({ model, modelType: 'Order', key: 'required_code', errors });
+  });
+
+  it('reports a key that a validator naming its own errors shares with a metadata rule, after async validation too', async () => {
+    // Like 'breeze', this validator reports errors under keys of its own choosing, which the metadata cannot show.
+    const named: ValidatorFactory = {
+      name: 'named',
+      fn: (group) => {
+        const validator: Validator = {
+          name: 'named',
+          group,
+          isAsync: false,
+          validate: (_value, context) => new ValidationError('required_code', { ...context!, value: undefined, messageTemplate: 'Code is missing' } as never, validator),
+        };
+        return validator;
+      },
+    };
+    const onDuplicateErrorKey = vi.fn();
+    const service = createValidationService({
+      metadata: { global: { validators: ['named'] }, Order: { properties: { code: { required: true } } } },
+      validators: [named],
+      onDuplicateErrorKey,
+    });
+    const errors = await firstValueFrom(service.validateModelAsync({}, 'Order'));
+    expect(errors.map((e) => e.key)).toEqual(['required_code', 'required_code']);
+    expect(onDuplicateErrorKey).toHaveBeenCalledOnce();
+    expect(onDuplicateErrorKey.mock.calls[0][0]).toMatchObject({ modelType: 'Order', key: 'required_code' });
+  });
+
+  it('warns once per model type and key by default', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const rule = { name: 'required', condition: 'true' };
+      const service = createValidationService({ metadata: { WarnedOrder: { properties: { code: { validators: [rule, rule] } } } } });
+      service.validateModelSync({}, 'WarnedOrder');
+      service.validateModelSync({}, 'WarnedOrder');
+      expect(warn).toHaveBeenCalledOnce();
+      expect(warn.mock.calls[0][0]).toMatch(/2 errors about one 'WarnedOrder' share the key 'required_code'/);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('checks again after the metadata changes', () => {
+    const service = createValidationService({ metadata: twoExpressions({}, {}) });
+    expect(() => service.validateModelSync({}, 'Order')).toThrow(ValidationConfigurationError);
+    service.validationMetadata.setMetadata(twoExpressions({ id: 'A' }, { id: 'B' }));
+    expect(service.validateModelSync({}, 'Order')).toHaveLength(2);
+  });
+
+  it('checks a type again when metadata added later gives it a clashing rule', () => {
+    // Such as the server's metadata, added at sign-in, for a type the client's metadata already had.
+    const service = createValidationService({ metadata: { Order: { properties: { code: { validators: ['required'] } } } } });
+    expect(service.validateModelSync({}, 'Order').map((e) => e.key)).toEqual(['required_code']);
+    service.validationMetadata.addMetadata({ Order: { properties: { code: { validators: ['required'] } } } });
+    expect(() => service.validateModelSync({}, 'Order')).toThrow(/'required_code'/);
   });
 });
 

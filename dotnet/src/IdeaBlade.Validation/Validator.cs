@@ -28,12 +28,19 @@ namespace IdeaBlade.Validation
         /// <c>name[_group]_propertyName</c> for a property rule; <c>name[_group][_id]</c> for a model-level rule, so model-level
         /// rules with the same validator name (several <c>expression</c> rules, say) get keys of their own when they have an <c>id</c>.
         /// </summary>
-        protected string GetKey(ValidationContext? context)
+        protected string GetKey(ValidationContext? context) => ErrorKey(Name, Group, context?.PropertyName, Metadata?.Id);
+
+        /// <summary>
+        /// The key of a rule's errors: <c>name[_group]_propertyName</c> for a property rule, <c>name[_group][_id]</c> for a
+        /// model-level rule. A property rule's <c>id</c> is not part of it. The duplicate key check computes keys with this
+        /// too, so the two cannot disagree.
+        /// </summary>
+        public static string ErrorKey(string name, string? group, string? propertyName, string? id)
         {
-            var key = Name;
-            if (!string.IsNullOrEmpty(Group)) key = $"{key}_{Group}";
-            if (!string.IsNullOrEmpty(context?.PropertyName)) key = $"{key}_{context!.PropertyName}";
-            else if (!string.IsNullOrEmpty(Metadata?.Id)) key = $"{key}_{Metadata!.Id}";
+            var key = name;
+            if (!string.IsNullOrEmpty(group)) key = $"{key}_{group}";
+            if (!string.IsNullOrEmpty(propertyName)) key = $"{key}_{propertyName}";
+            else if (!string.IsNullOrEmpty(id)) key = $"{key}_{id}";
             return key;
         }
 

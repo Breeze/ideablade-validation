@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -40,6 +42,15 @@ namespace IdeaBlade.Validation
 
         public Action<object, string, TimeSpan>? OnAsyncTimeout { get; set; }
 
+        /// <summary>
+        /// Called when one validation of a model reports two or more errors with the same key. Errors are told apart by
+        /// their key, so all but one of them may be hidden on the client. The metadata's own rules are checked before they
+        /// run (<see cref="ModelMetadata.CheckErrorKeys"/>); this catches the rest, such as a validator that names its
+        /// errors itself (the data annotations) reporting a key a metadata rule reports too, or rules with conditions that
+        /// apply together. Default: a <see cref="Trace.TraceWarning(string)"/>, once per model type and key.
+        /// </summary>
+        public Action<DuplicateErrorKeyInfo>? OnDuplicateErrorKey { get; set; }
+
         /// <summary>Maps a model instance to its model type name. Default: CLR type name (EF/Castle proxies unwrapped).</summary>
         public Func<object, string> ModelTypeResolver { get; set; } = Extensions.DefaultModelTypeName;
 
@@ -48,6 +59,24 @@ namespace IdeaBlade.Validation
         /// camelCase metadata over PascalCase CLR properties.
         /// </summary>
         public NamingConvention NamingConvention { get; set; } = NamingConvention.CamelCase;
+    }
+
+    /// <summary>Errors about one model that share a key, reported by <see cref="ValidationServiceOptions.OnDuplicateErrorKey"/>.</summary>
+    public sealed class DuplicateErrorKeyInfo
+    {
+        public DuplicateErrorKeyInfo(object model, string modelType, string key, IReadOnlyList<ValidationError> errors)
+        {
+            Model = model;
+            ModelType = modelType;
+            Key = key;
+            Errors = errors;
+        }
+
+        public object Model { get; }
+        public string ModelType { get; }
+        public string Key { get; }
+        /// <summary>The errors with that key, two or more.</summary>
+        public IReadOnlyList<ValidationError> Errors { get; }
     }
 
     /// <summary>Event data for <see cref="ValidationService.ModelValidated"/>.</summary>
@@ -101,7 +130,7 @@ namespace IdeaBlade.Validation
             {
                 errors.AddRange(((Validator)item.Validator).Validate(item.Value, item.Context));
             }
-            ModelValidated?.Invoke(this, new ModelValidatedEventArgs(model, modelType, errors));
+            Completed(model, modelType, errors);
             return errors;
         }
 
@@ -136,7 +165,7 @@ namespace IdeaBlade.Validation
                             cts.Cancel();
                             _options.OnAsyncTimeout?.Invoke(model, modelType, _options.AsyncTimeout);
                             ObserveFaults(all);
-                            ModelValidated?.Invoke(this, new ModelValidatedEventArgs(model, modelType, errors));
+                            Completed(model, modelType, errors);
                             return errors;
                         }
                         cts.Cancel(); // stop the delay
@@ -145,8 +174,38 @@ namespace IdeaBlade.Validation
                     errors.AddRange(results.SelectMany(e => e));
                 }
             }
-            ModelValidated?.Invoke(this, new ModelValidatedEventArgs(model, modelType, errors));
+            Completed(model, modelType, errors);
             return errors;
+        }
+
+        private void Completed(object model, string modelType, IReadOnlyList<ValidationError> errors)
+        {
+            ReportDuplicateKeys(model, modelType, errors);
+            ModelValidated?.Invoke(this, new ModelValidatedEventArgs(model, modelType, errors));
+        }
+
+        private void ReportDuplicateKeys(object model, string modelType, IReadOnlyList<ValidationError> errors)
+        {
+            if (errors.Count < 2) return;
+            foreach (var same in errors.GroupBy(e => e.Key, StringComparer.Ordinal).Where(g => g.Count() > 1))
+            {
+                var info = new DuplicateErrorKeyInfo(model, modelType, same.Key, same.ToList());
+                if (_options.OnDuplicateErrorKey != null) _options.OnDuplicateErrorKey(info);
+                else WarnOnce(info);
+            }
+        }
+
+        /// <summary>Model types and keys already warned about, so a model validated on every save warns once.</summary>
+        private static readonly ConcurrentDictionary<string, bool> Warned = new ConcurrentDictionary<string, bool>(StringComparer.Ordinal);
+
+        private static void WarnOnce(DuplicateErrorKeyInfo info)
+        {
+            if (!Warned.TryAdd(info.ModelType + " " + info.Key, true)) return;
+            var messages = string.Join(", ", info.Errors.Select(e => "\"" + e.ErrorMessage + "\""));
+            Trace.TraceWarning(
+                $"IdeaBlade.Validation: {info.Errors.Count} errors about one '{info.ModelType}' share the key '{info.Key}' ({messages}). " +
+                "Errors are told apart by key, so all but one may be hidden on the client. Give the rules different ids or groups, " +
+                "or check which validator reports the key twice. See \"Error keys\" in docs/metadata.md.");
         }
 
         private static void ObserveFaults(Task task) => task.ContinueWith(t => { _ = t.Exception; }, TaskContinuationOptions.OnlyOnFaulted);
@@ -186,6 +245,7 @@ namespace IdeaBlade.Validation
         {
             var p = predicate ?? ((v, prop) => true);
             var metadata = ValidationMetadata.GetModelMetadata(modelType);
+            metadata.CheckErrorKeys();
             return metadata.Validators.Any(v => v.IsAsync && p(v)) || metadata.Properties.Any(prop => prop.Validators.Any(v => v.IsAsync && p(v, prop)));
         }
 
@@ -218,6 +278,7 @@ namespace IdeaBlade.Validation
         private IEnumerable<PlannedValidation> Plan(bool isAsync, object model, string modelType, ValidationOptions? options)
         {
             var metadata = ValidationMetadata.GetModelMetadata(modelType);
+            metadata.CheckErrorKeys();
             var predicate = options?.Predicate ?? ((v, p) => true);
             var resolver = options?.ConditionContextResolver;
 

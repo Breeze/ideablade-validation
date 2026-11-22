@@ -69,6 +69,16 @@ describe('Angular providers', () => {
     ]);
   });
 
+  it('passes onDuplicateErrorKey to the service', () => {
+    const reported: string[] = [];
+    const rule = { name: 'required', condition: 'true' };
+    const injector = createInjector([
+      provideValidation({ metadata: { Order: { properties: { code: { validators: [rule, rule] } } } }, onDuplicateErrorKey: ({ key }) => reported.push(key) }),
+    ]);
+    injector.get(ValidationService).validateModelSync({}, 'Order');
+    expect(reported).toEqual(['required_code']);
+  });
+
   it('validationErrors() is a signal that recomputes when the model changes', () => {
     const injector = setup();
     const person = signal<Record<string, unknown>>({ name: '' });
