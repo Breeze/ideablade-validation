@@ -317,6 +317,8 @@ export class OrderEditorComponent {
 </form>
 ```
 
+When `[validationModel]` changes to another model, as when a screen moves from one record to the next, the form clears its controls' touched and dirty flags: Angular keeps them, and they belong to the record the user was on. Without that, a field left on one record counted as touched on the next, and a new record showed its error at once. Models are told apart by identity, so bind the same object for as long as the user edits one record.
+
 Add `validationAriaInvalid` to a field to set `aria-invalid="true"` on it while it has errors to show, so screen readers announce what the user sees: `<input name="city" [(ngModel)]="booking.city" validationAriaInvalid />`. It is part of `ValidationFormsDirectives`. Other presentation, such as a `title` or a component library's `invalid` input, is up to the app: bind it to `hasShownErrors()`.
 
 **Errors outside a field.** For errors the forms don't show, such as a rule about the whole model from entity store validation, `injectErrorVisibility()` wraps the provided visibility for signals. Its `shown(model, errors)` and `isShown(model, error)` read the visibility's version, so a `computed` or template that calls them follows touches, validations and `revealAll()`. Without a visibility provided, every error shows.
