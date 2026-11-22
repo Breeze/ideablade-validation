@@ -10,9 +10,21 @@
  *   ...
  * }
  */
-import { type DependencyList, type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type DependencyList,
+  type ReactNode,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import type { Observable } from 'rxjs';
 
+import type { ErrorVisibility } from '../core/error-visibility.js';
 import type { ValidationError } from '../core/validation-error.js';
 import type { EntitiesValidationResult, EntityStore, ValidationOptions, ValidationService } from '../core/validation-service.js';
 import { type CreateValidationServiceOptions, createValidationService } from '../index.js';
@@ -55,6 +67,43 @@ export function useValidationService(): ValidationService {
   return service;
 }
 
+const ErrorVisibilityContext = createContext<ErrorVisibility | null>(null);
+
+/**
+ * Makes an {@link ErrorVisibility} available to {@link useValidation}, {@link ValidationForm} and
+ * {@link useFieldValidation} below it, usually for one screen. They then report validations and touches to it, and
+ * offer the errors to show. Call `visibility.revealAll()` on a save attempt.
+ *
+ * @example
+ * const [visibility] = useState(() => new ErrorVisibility({ isNew: breezeIsNew }));
+ * return <ErrorVisibilityProvider visibility={visibility}>...</ErrorVisibilityProvider>;
+ */
+export function ErrorVisibilityProvider({ visibility, children }: { visibility: ErrorVisibility; children?: ReactNode }) {
+  return <ErrorVisibilityContext.Provider value={visibility}>{children}</ErrorVisibilityContext.Provider>;
+}
+
+/** The {@link ErrorVisibility} of the nearest {@link ErrorVisibilityProvider}, or null. */
+export function useErrorVisibility(): ErrorVisibility | null {
+  return useContext(ErrorVisibilityContext);
+}
+
+const noSubscription = () => () => {};
+
+/** Re-renders when the visibility changes, and returns its version. */
+function useVisibilityVersion(visibility: ErrorVisibility | null): number {
+  const subscribe = useCallback(
+    (notify: () => void) => {
+      if (!visibility) {
+        return noSubscription();
+      }
+      const subscription = visibility.changes$.subscribe(notify);
+      return () => subscription.unsubscribe();
+    },
+    [visibility],
+  );
+  return useSyncExternalStore(subscribe, () => visibility?.version ?? 0);
+}
+
 export interface UseValidationOptions extends ValidationOptions {
   /** Run asynchronous validators. Default true. */
   async?: boolean;
@@ -65,6 +114,11 @@ export interface UseValidationOptions extends ValidationOptions {
   deps?: DependencyList;
   /** Skip validation entirely (e.g. while the model is loading). */
   disabled?: boolean;
+  /**
+   * Decides which errors to show ({@link ErrorVisibility}). Default: the nearest {@link ErrorVisibilityProvider}'s.
+   * Pass null for none.
+   */
+  visibility?: ErrorVisibility | null;
 }
 
 export interface UseValidationResult {
@@ -80,6 +134,10 @@ export interface UseValidationResult {
   errorsFor(propertyName?: string): ValidationError[];
   /** Messages for one property, convenient for rendering. */
   messagesFor(propertyName?: string): string[];
+  /** {@link errorsFor}, without the errors an {@link ErrorVisibility} hides. Without one, the same as `errorsFor`. */
+  shownErrorsFor(propertyName?: string): ValidationError[];
+  /** Records that the user touched a property (edited it, or left its field), for the {@link ErrorVisibility}. */
+  markTouched(propertyName: string): void;
   /** Forces re-validation (e.g. after mutating the model in place). */
   revalidate(): void;
 }
@@ -93,6 +151,9 @@ const EMPTY: ValidationError[] = [];
  * service's entity store changes (see {@link useValidationScope}).
  *
  * Without a `modelType`, the model type resolvers name it (such as `breezeModelType` for Breeze entities).
+ *
+ * With an {@link ErrorVisibility}, it reports each validation to it. A model replaced by a copy on every change, as
+ * with `useState`, keeps what the visibility knows about it: what changes between renders is taken to be the same model.
  */
 export function useValidation(model: unknown, modelType?: string, options: UseValidationOptions = {}): UseValidationResult {
   const service = useValidationService();
@@ -103,6 +164,15 @@ export function useValidation(model: unknown, modelType?: string, options: UseVa
   modelType = type ?? '';
   const optionsRef = useRef(options);
   optionsRef.current = options;
+  const contextVisibility = useErrorVisibility();
+  const visibility = options.visibility !== undefined ? options.visibility : contextVisibility;
+  const visibilityVersion = useVisibilityVersion(visibility);
+  // A model replaced by a copy is the same model to the visibility. Before rendering, so the copy's errors show right.
+  const previousModel = useRef(model);
+  if (visibility && previousModel.current !== model) {
+    visibility.transfer(previousModel.current, model);
+    previousModel.current = model;
+  }
   const [version, setVersion] = useState(0);
   const revalidate = useCallback(() => setVersion((v) => v + 1), []);
   const deps = [service, model, modelType, version, options.disabled, ...(options.deps ?? [])];
@@ -139,6 +209,13 @@ export function useValidation(model: unknown, modelType?: string, options: UseVa
   // validateModelAsync returns all errors (sync and async); until it completes, show the sync ones.
   const errors = runAsync && !pending ? asyncState.errors : syncErrors;
 
+  // Report each validation to the visibility (after rendering: it notifies its subscribers).
+  useEffect(() => {
+    if (visibility && model != null && !options.disabled) {
+      visibility.observe(model, errors);
+    }
+  }, [visibility, model, errors, options.disabled]);
+
   return useMemo(() => {
     const errorsFor = (propertyName?: string) =>
       errors.filter((e) => (propertyName === undefined ? e.propertyNames.length === 0 : e.isFor(propertyName)));
@@ -148,9 +225,13 @@ export function useValidation(model: unknown, modelType?: string, options: UseVa
       pending,
       errorsFor,
       messagesFor: (propertyName?: string) => errorsFor(propertyName).map((e) => e.errorMessage),
+      shownErrorsFor: (propertyName?: string) => (visibility ? visibility.shown(model, errorsFor(propertyName)) : errorsFor(propertyName)),
+      markTouched: (propertyName: string) => visibility?.markTouched(model, propertyName),
       revalidate,
     };
-  }, [errors, pending, revalidate]);
+    // visibilityVersion: what the visibility shows changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [errors, pending, revalidate, visibility, model, visibilityVersion]);
 }
 
 const ValidationFormContext = createContext<UseValidationResult | null>(null);
@@ -180,20 +261,31 @@ export function ValidationForm({ model, modelType, children, ...options }: Valid
 }
 
 export interface FieldValidation {
-  /** The errors about the property. */
+  /**
+   * The errors about the property to show. With an {@link ErrorVisibility}, without those it hides; without one, all of
+   * them, as {@link allErrors}.
+   */
   errors: ValidationError[];
   /** Their messages. */
   messages: string[];
   /** The messages joined, or null when there are none: handy for an input's `error` or `title`. */
   message: string | null;
+  /** Whether there are errors to show. */
   invalid: boolean;
+  /** All the errors about the property, shown or not. */
+  allErrors: ValidationError[];
+  /** Records that the user touched the field (edited it, or left it), for the {@link ErrorVisibility}: `onBlur`. */
+  markTouched(): void;
 }
 
-const NO_FORM: FieldValidation = { errors: EMPTY, messages: [], message: null, invalid: false };
+const NO_FORM: FieldValidation = { errors: EMPTY, messages: [], message: null, invalid: false, allErrors: EMPTY, markTouched: () => {} };
 
 /**
  * The errors about `propertyName` in the nearest {@link ValidationForm}; without a name, the errors about the model as a
  * whole. Outside a `ValidationForm`, there are none.
+ *
+ * With an {@link ErrorVisibility}, `errors` (and `messages`, `message`, `invalid`) are those to show, and
+ * `markTouched` reports a touch: call it when the field is left, as `onBlur={field.markTouched}`.
  */
 export function useFieldValidation(propertyName?: string): FieldValidation {
   const form = useContext(ValidationFormContext);
@@ -201,9 +293,21 @@ export function useFieldValidation(propertyName?: string): FieldValidation {
     if (!form) {
       return NO_FORM;
     }
-    const errors = form.errorsFor(propertyName);
+    const allErrors = form.errorsFor(propertyName);
+    const errors = form.shownErrorsFor(propertyName);
     const messages = errors.map((e) => e.errorMessage);
-    return { errors, messages, message: messages.length ? messages.join(' ') : null, invalid: errors.length > 0 };
+    return {
+      errors,
+      messages,
+      message: messages.length ? messages.join(' ') : null,
+      invalid: errors.length > 0,
+      allErrors,
+      markTouched: () => {
+        if (propertyName !== undefined) {
+          form.markTouched(propertyName);
+        }
+      },
+    };
   }, [form, propertyName]);
 }
 

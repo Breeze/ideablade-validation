@@ -48,6 +48,7 @@ import { type Observable, type Subscription, filter, map, of, switchMap, timer }
 
 import type { EntityInfo, GlobalValidationContext, StoreQuery, ValidatorContextProvider } from '../core/context.js';
 import { createEntityStore } from '../core/entity-store.js';
+import { ErrorVisibility, type ErrorVisibilityOptions } from '../core/error-visibility.js';
 import type { ModelValidationMetadataLike } from '../core/metadata-config.js';
 import { type RuleSource, ValidationMetadata } from '../core/metadata.js';
 import type { ValidationError } from '../core/validation-error.js';
@@ -65,7 +66,7 @@ import type { ValidatorFactory } from '../core/validator.js';
 import type { ExpressionEvaluator } from '../expressions/index.js';
 import { defaultValidators } from '../validators/default-validators.js';
 
-export { ValidationMetadata, ValidationService };
+export { ErrorVisibility, ValidationMetadata, ValidationService };
 
 /** Validation metadata maps (multi). */
 export const VALIDATION_METADATA = new InjectionToken<ModelValidationMetadataLike[]>('IdeaBlade.ValidationMetadata');
@@ -176,6 +177,53 @@ export function provideValidationScope(entityStore?: () => EntityStore | undefin
     { provide: ValidationService, useFactory: () => inject(ValidationService, { skipSelf: true }).createScope(entityStore?.()) },
     { provide: FormValidators, useFactory: () => new FormValidators(inject(ValidationService)) },
   ];
+}
+
+export interface ProvideErrorVisibilityOptions extends ErrorVisibilityOptions {
+  /**
+   * Also report every result of the continuous validation of the scope's entity store ({@link ErrorVisibility.watch}),
+   * so errors shown outside the forms, such as a rule about the whole model in a message of its own, have a baseline
+   * even when no form validates their model. Default false.
+   */
+  watchEntityStore?: boolean;
+}
+
+/**
+ * Provides an {@link ErrorVisibility}, usually for one screen: put it in a component's `providers`. The
+ * template-driven-forms directives inside then report validations and touches to it, and offer the errors to show
+ * (`#city="validationField"`, `city.shownErrors()`). Call `inject(ErrorVisibility).revealAll()` on a save attempt.
+ *
+ * @example
+ * providers: [provideValidationScope(), provideErrorVisibility({ isNew: breezeIsNew })]
+ */
+export function provideErrorVisibility(options: ProvideErrorVisibilityOptions | (() => ProvideErrorVisibilityOptions) = {}): Provider {
+  return {
+    provide: ErrorVisibility,
+    useFactory: () => {
+      const { watchEntityStore, ...rest } = typeof options === 'function' ? options() : options;
+      const visibility = new ErrorVisibility(rest);
+      if (watchEntityStore) {
+        const subscription = visibility.watch(inject(ValidationService).validateEntityStore());
+        inject(DestroyRef).onDestroy(() => subscription.unsubscribe());
+      }
+      return visibility;
+    },
+  };
+}
+
+const visibilityVersions = new WeakMap<ErrorVisibility, Signal<number>>();
+
+/** Reads a signal that changes with the visibility's state, so a template or `computed` that calls this follows it. */
+export function trackVisibility(visibility: ErrorVisibility): void {
+  let version = visibilityVersions.get(visibility);
+  if (!version) {
+    const counter = signal(visibility.version);
+    // The visibility can change while Angular evaluates a computed (a validator reports a validation), so outside it.
+    visibility.changes$.subscribe(() => untracked(() => counter.set(visibility.version)));
+    version = counter.asReadonly();
+    visibilityVersions.set(visibility, version);
+  }
+  version();
 }
 
 export function provideValidationMetadata(...metadata: ModelValidationMetadataLike[]): Provider[] {
@@ -334,6 +382,10 @@ export interface FormModelTarget {
  *
  * Errors about the model as a whole (no `propertyNames`) are in {@link modelErrors}. The template-driven-forms
  * directives create one per form; {@link FormValidators.validateFormGroup} creates one for a reactive form group.
+ *
+ * With an {@link ErrorVisibility}, it reports each validation and each touch of a control (edited, or left) to it, and
+ * {@link shownErrorsAbout} gives the errors to show. The controls' own `errors` stay complete, so the form is as valid
+ * or invalid as before.
  */
 export class FormModelValidation {
   private readonly controls = new Map<AbstractControl, { propertyName: string; subscription: Subscription }>();
@@ -347,10 +399,14 @@ export class FormModelValidation {
   /** Errors about the model as a whole: model-level rules that name no properties. */
   readonly modelErrors: Signal<readonly ValidationError[]> = computed(() => this.state().filter((e) => e.propertyNames.length === 0));
 
+  /** Errors to show about the model as a whole: {@link modelErrors}, without those an {@link ErrorVisibility} hides. */
+  readonly shownModelErrors: Signal<readonly ValidationError[]> = computed(() => this.shownErrorsAbout());
+
   constructor(
     private readonly validationService: ValidationService,
     private readonly target: () => FormModelTarget | null,
     private readonly onRefresh?: () => void,
+    private readonly visibility?: ErrorVisibility | null,
   ) {}
 
   /** Adds a control bound to `propertyName`; its value takes the property's place in the validation. */
@@ -364,8 +420,43 @@ export class FormModelValidation {
       return;
     }
     const subscription = control.valueChanges.subscribe(() => this.refresh(control));
+    if (this.visibility) {
+      // Angular 18+ reports touches as events; before that, only value changes are observable.
+      const events = (control as { events?: Observable<unknown> }).events ?? control.valueChanges;
+      subscription.add(events.subscribe(() => this.reportTouch(control)));
+    }
     this.controls.set(control, { propertyName, subscription });
     this.last = undefined;
+  }
+
+  /**
+   * Records that the user touched `propertyName`, for {@link ErrorVisibility}: for a field whose control Angular does
+   * not mark as touched or dirty itself.
+   */
+  markTouched(propertyName: string): void {
+    this.visibility?.markTouched(this.target()?.info.entity, propertyName);
+  }
+
+  /** The errors of the latest validation about `propertyName`; without a name, those about the model as a whole. */
+  errorsAbout(propertyName?: string): readonly ValidationError[] {
+    return this.state().filter((e) => (propertyName === undefined ? e.propertyNames.length === 0 : e.isFor(propertyName)));
+  }
+
+  /** {@link errorsAbout}, without the errors an {@link ErrorVisibility} hides. Reactive: call it in a template or `computed`. */
+  shownErrorsAbout(propertyName?: string): readonly ValidationError[] {
+    const errors = this.errorsAbout(propertyName);
+    if (!this.visibility) {
+      return errors;
+    }
+    trackVisibility(this.visibility);
+    return this.visibility.shown(this.target()?.info.entity, errors);
+  }
+
+  private reportTouch(control: AbstractControl): void {
+    const entry = this.controls.get(control);
+    if (entry && (control.dirty || control.touched)) {
+      this.markTouched(entry.propertyName);
+    }
   }
 
   unregister(control: AbstractControl): void {
@@ -430,7 +521,11 @@ export class FormModelValidation {
       context: { ...context, originalModel: info.entity },
     });
     this.last = { values, errors };
-    untracked(() => this.state.set(errors));
+    untracked(() => {
+      this.state.set(errors);
+      // The errors are of a view of the model; the visibility knows the model itself.
+      this.visibility?.observe(info.entity, errors);
+    });
     return errors;
   }
 
@@ -501,8 +596,14 @@ export class FormValidators {
    * current values too ({@link FormModelValidation.asyncErrorsFor}). Angular runs them once the control's sync rules
    * pass, and again when another control changes, as it re-checks the others.
    */
-  validateFormGroup(formGroup: FormGroup, modelInfoFn: () => EntityInfo, group?: string, context?: GlobalValidationContext): FormModelValidation {
-    const validation = new FormModelValidation(this.validationService, () => ({ info: modelInfoFn(), group, context }));
+  validateFormGroup(
+    formGroup: FormGroup,
+    modelInfoFn: () => EntityInfo,
+    group?: string,
+    context?: GlobalValidationContext,
+    visibility?: ErrorVisibility | null,
+  ): FormModelValidation {
+    const validation = new FormModelValidation(this.validationService, () => ({ info: modelInfoFn(), group, context }), undefined, visibility);
     for (const [propertyName, control] of Object.entries(formGroup.controls)) {
       validation.register(control, propertyName);
       control.addValidators((c) => validation.errorsFor(c, propertyName));
@@ -601,17 +702,21 @@ export class ValidationFormDirective implements OnChanges {
 
   private readonly validationService = inject(ValidationService);
   private readonly changeDetector = inject(ChangeDetectorRef);
+  private readonly visibility = inject(ErrorVisibility, { optional: true });
 
   /** The form's validation: all its errors, the model-level ones, and `revalidate()`. */
   readonly validation = new FormModelValidation(
     this.validationService,
     () => targetOf(this.validationService, this.validationModel(), this.validationModelType(), this.validationGroup(), this.validationContext()),
     () => this.changeDetector.markForCheck(),
+    this.visibility,
   );
   /** All errors of the latest validation. */
   readonly errors = this.validation.errors;
   /** Errors about the model as a whole: model-level rules that name no properties. */
   readonly modelErrors = this.validation.modelErrors;
+  /** {@link modelErrors}, without those an {@link ErrorVisibility} hides (all of them without one). */
+  readonly shownModelErrors = this.validation.shownModelErrors;
 
   constructor() {
     inject(DestroyRef).onDestroy(() => this.validation.dispose());
@@ -702,6 +807,14 @@ function targetOf(
  * <input name="email" [(ngModel)]="customer.email" #email="ngModel" />
  * @for (e of email.errors | keyvalue; track e.key) { <small>{{ e.value.errorMessage }}</small> }
  * ```
+ *
+ * The directive is also exported as `validationField`, with the field's errors as signals. With an
+ * {@link ErrorVisibility} provided, `shownErrors` leaves out those it hides:
+ *
+ * ```html
+ * <input name="email" [(ngModel)]="customer.email" #email="validationField" [class.invalid]="email.hasShownErrors()" />
+ * @for (e of email.shownErrors(); track e.key) { <small>{{ e.errorMessage }}</small> }
+ * ```
  */
 export class ValidationFieldDirective implements Validator, OnChanges {
   /** The model; defaults to the form's. */
@@ -719,6 +832,7 @@ export class ValidationFieldDirective implements Validator, OnChanges {
 
   private readonly validationService = inject(ValidationService);
   private readonly form = inject(ValidationFormDirective, { optional: true });
+  private readonly visibility = inject(ErrorVisibility, { optional: true });
   private onValidatorChange?: () => void;
   private control?: AbstractControl;
   private own?: FormModelValidation;
@@ -735,6 +849,21 @@ export class ValidationFieldDirective implements Validator, OnChanges {
       return validation && propertyName ? validation.asyncErrorsFor(control, propertyName) : of(null);
     },
   };
+
+  /** The errors about the field's property, from the latest validation of its model. */
+  readonly errors: Signal<readonly ValidationError[]> = computed(() => {
+    const validation = this.validation();
+    const propertyName = this.propertyName();
+    return validation && propertyName ? validation.errorsAbout(propertyName) : [];
+  });
+  /** {@link errors}, without those an {@link ErrorVisibility} hides (all of them without one). */
+  readonly shownErrors: Signal<readonly ValidationError[]> = computed(() => {
+    const validation = this.validation();
+    const propertyName = this.propertyName();
+    return validation && propertyName ? validation.shownErrorsAbout(propertyName) : [];
+  });
+  /** Whether the field has errors to show. */
+  readonly hasShownErrors: Signal<boolean> = computed(() => this.shownErrors().length > 0);
 
   constructor() {
     inject(DestroyRef).onDestroy(() => {
@@ -784,7 +913,7 @@ export class ValidationFieldDirective implements Validator, OnChanges {
     if (this.form && !ownSettings) {
       return this.form.validation;
     }
-    return (this.own ??= new FormModelValidation(this.validationService, () => this.target()));
+    return (this.own ??= new FormModelValidation(this.validationService, () => this.target(), undefined, this.visibility));
   }
 
   private target(): FormModelTarget | null {
@@ -809,7 +938,7 @@ export class ValidationFieldDirective implements Validator, OnChanges {
   static ɵdir: i0.ɵɵDirectiveDeclaration<
     ValidationFieldDirective,
     '[ngModel]:not([formControlName]):not([formControl])',
-    never,
+    ['validationField'],
     {
       validationModel: { alias: 'validationModel'; required: false; isSignal: true };
       validationModelType: { alias: 'validationModelType'; required: false; isSignal: true };
@@ -841,6 +970,7 @@ export class ValidationFieldDirective implements Validator, OnChanges {
       { provide: NG_VALIDATORS, useExisting: ValidationFieldDirective, multi: true },
       { provide: NG_ASYNC_VALIDATORS, useFactory: () => inject(ValidationFieldDirective).asyncValidator, multi: true },
     ],
+    exportAs: ['validationField'],
     usesOnChanges: true,
     ngImport: i0,
   } as never) as never;

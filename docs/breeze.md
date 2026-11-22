@@ -128,6 +128,15 @@ createValidationService({ metadata, validators: [breezeValidator], modelTypeReso
 
 > **In TempHire:** [`app.config.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/app.config.ts) registers `breezeModelType`, so the entity editors never name a model type.
 
+## New entities: `breezeIsNew`
+
+For [error visibility](concepts.md#showing-errors-error-visibility): an entity is new while it is added (`EntityState.Added`), so its first errors wait until the user gets to them. Loaded entities show all their errors. Anything else, such as a view model, counts as new.
+
+```ts
+new ErrorVisibility({ isNew: breezeIsNew });
+// Angular: provideErrorVisibility({ isNew: breezeIsNew })
+```
+
 ## Single entities and forms: the manager as the entity store
 
 `store(type)` in expressions, and the `unique` validator that depends on it, need to see an entity's siblings. Give the validation service of the scope its `EntityManager` as its [entity store](concepts.md#scopes-a-service-and-its-entity-store): single entities and forms validated by that service then see the manager's live entities (without deleted or detached ones), and the forms re-validate when anything in the manager changes.

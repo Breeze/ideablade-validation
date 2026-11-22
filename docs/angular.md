@@ -269,3 +269,55 @@ A field can bring its own model, for example an `ngModel` outside a form:
 ```
 
 A field that sets its own model, model type, group or context is validated on its own, not with the form. As with reactive forms, the controls' values are substituted into a view of the model, and the control's `errors` map error keys to `ValidationError`s. When a form or field input changes, such as `validationGroup`, the fields re-validate. Async rules are debounced by 300 ms.
+
+## Showing errors: `ErrorVisibility`
+
+`provideErrorVisibility()` provides an [`ErrorVisibility`](concepts.md#showing-errors-error-visibility), usually for one screen, in a component's `providers`. The form integrations then hide a new model's first errors until the user gets to them, and show everything after a save attempt. Validation does not change: the controls keep all their errors, so the form is as valid or invalid as before; the integrations offer the errors to show next to them.
+
+```ts
+@Component({
+  providers: [provideValidationScope(), provideErrorVisibility({ isNew: breezeIsNew })],
+  ...
+})
+export class OrderEditorComponent {
+  private readonly visibility = inject(ErrorVisibility);
+
+  save() {
+    if (this.hasErrors()) {
+      this.visibility.revealAll();   // show everything, and say why nothing was saved
+      return;
+    }
+    ...
+  }
+}
+```
+
+| Option | Default |
+|---|---|
+| `isNew` | Every model is new. `breezeIsNew` counts only added Breeze entities. |
+| `watchEntityStore` | `false`. With `true`, every result of the scope's continuous entity store validation is reported too, so errors shown outside the forms have a baseline. |
+
+**Template-driven forms.** The field directive is exported as `validationField`. It reports the field's touches (edited, or left) and its form's validations, and has the field's errors as signals: `errors()` (all of them), `shownErrors()` and `hasShownErrors()`. The form directive has `shownModelErrors()`.
+
+```html
+<form [validationModel]="booking" #form="validationForm">
+  <input name="city" [(ngModel)]="booking.city" #city="validationField" [class.invalid]="city.hasShownErrors()" />
+  @for (e of city.shownErrors(); track e.key) { <small>{{ e.errorMessage }}</small> }
+  @for (e of form.shownModelErrors(); track e.key) { <small>{{ e.errorMessage }}</small> }
+</form>
+```
+
+**Reactive forms.** Pass the visibility to `validateFormGroup`. The returned `FormModelValidation` reports the controls' touches, and `shownErrorsAbout(property)` gives the errors to show; without a property, those about the model as a whole.
+
+```ts
+private readonly visibility = inject(ErrorVisibility);
+readonly validation = this.fv.validateFormGroup(this.form, () => ({ entity: this.booking, entityType: 'Booking' }), undefined, undefined, this.visibility);
+// template: @for (e of validation.shownErrorsAbout('city'); track e.key) { ... }
+```
+
+**Signal Forms.** `validateWithMetadata` uses the provided visibility (or its `visibility` option). Each metadata error then has a `shown()` check, and `shownErrors(errors)` filters a field's errors with it. The fields' `touched()` and `dirty()` count as touches, and the copies Signal Forms makes of the model keep what the visibility knows.
+
+```ts
+protected readonly shownErrors = shownErrors;
+// template: @for (e of shownErrors(nameForm.firstName().errors()); track e.kind) { <small>{{ e.message }}</small> }
+```

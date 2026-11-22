@@ -24,6 +24,7 @@ Validation should also be independent of how the data is shown. Whenever state c
 - Rules live in **JSON metadata**: per model type, with property rules, model rules, groups, conditions and inheritance. The same metadata runs in the browser and on the server.
 - **Validators plug in by name** through dependency injection: Angular providers, React provider props, or .NET `IServiceCollection`.
 - Validators can be **sync or async**. Async validators may return Observables, Promises or Tasks, with a timeout.
+- **Error visibility**: a new record is not all red before the user has typed anything. Its first errors show once the user gets to a field, errors the user causes show at once (also across fields), and everything shows on a save attempt.
 - **Continuous validation** of whole entity stores, such as a Breeze `EntityManager`, an NgRx store or your own cache, that re-validates as entities change.
 - **No `eval`.** Conditions and expressions run in a safe, sandboxed expression interpreter that works under a strict CSP. One grammar is shared by both platforms.
 - First-class **Angular** (standalone providers, signals, reactive, template-driven and Signal Forms) and **React** (hooks) integrations, both optional peer dependencies.
