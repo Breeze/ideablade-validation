@@ -79,7 +79,17 @@ readonly canSave = computed(() => {
 });
 ```
 
-> **In TempHire:** [`resource-mgt.component.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/resource-mgt/resource-mgt.component.ts) has `provideValidationScope()` in its providers, and an `effect` that calls `setEntityStore` whenever it switches to another unit of work. Its Save button reacts to `toSignal(validation.validateEntityStore())`, and the address and phone lists ([`resource-address-list.component.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/resource-mgt/sections/resource-address-list.component.ts)) show the resource's rules from the same validation.
+The result follows an edit a moment later: the service coalesces a burst of changes into one run, after the code that made them has finished ([Coalescing](concepts.md#coalescing)). Until then it still holds the result from before the edit, not pending. That's right for a button's state, but a command that acts on errors should validate the store itself when it runs, which also waits for async rules:
+
+```ts
+async save() {
+  const { validationErrors } = await firstValueFrom(this.validationService.validateEntityStoreOneTime(this.unitOfWork.entityStore));
+  if (validationErrors.length) { /* show them; don't save */ return; }
+  await this.unitOfWork.commit();
+}
+```
+
+> **In TempHire:** [`resource-mgt.component.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/resource-mgt/resource-mgt.component.ts) has `provideValidationScope()` in its providers, and an `effect` that calls `setEntityStore` whenever it switches to another unit of work. Its Save button is enabled from `toSignal(validation.validateEntityStore())`, and Save validates the unit of work once more when clicked; the address and phone lists ([`resource-address-list.component.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/resource-mgt/sections/resource-address-list.component.ts)) show the resource's rules from the same validation.
 
 ## Using the service
 

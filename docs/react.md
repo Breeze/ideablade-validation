@@ -137,6 +137,18 @@ const result = useEntityStoreValidation();
 const canSave = hasChanges && !!result && !result.pending && result.validationErrors.length === 0;
 ```
 
+The result follows an edit a moment later: the service coalesces a burst of changes into one run, after the code that made them has finished ([Coalescing](concepts.md#coalescing)). Until then it still holds the result from before the edit, not pending. That's right for a button's state, but a command that acts on errors should validate the store itself when it runs, which also waits for async rules:
+
+```tsx
+async function save() {
+  const { validationErrors } = await firstValueFrom(service.validateEntityStoreOneTime(unitOfWork.entityStore));
+  if (validationErrors.length) { /* show them; don't save */ return; }
+  await unitOfWork.commit();
+}
+```
+
+In React the result also reaches a component only on its next render, and an event handler can hold an older render's value.
+
 With a store, it validates that one:
 
 ```tsx
