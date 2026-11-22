@@ -271,6 +271,8 @@ Entity stores often change many times in a row. Breeze, for example, raises one 
 
 Set it for the service with `createValidationService({ coalesce })` (Angular: `provideValidation({ coalesce })`), or per call with `validateEntityStore(store, { coalesce })`.
 
+So between a change and its run, the latest result is the one from before the change, and it is not pending. Enable a Save button from it, but have the command itself validate the store when it runs, with `validateEntityStoreOneTime(store)` ([Angular](angular.md#scopes), [React](react.md#useentitystorevalidationstore-options)).
+
 ## Integrating your data layer
 
 The framework works with any persistence layer: Breeze, an ORM or a REST client, a GraphQL cache, NgRx, MobX, or plain objects in memory. The core never talks to a data layer directly. It asks for what it needs through a few public extension points, and an integration is just an implementation of them.
