@@ -1,11 +1,19 @@
 // @vitest-environment jsdom
 // ErrorVisibility in React: a ValidationForm over useState, whose model is replaced by a copy on every change.
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { ErrorVisibility, createValidationService } from '../src/index.js';
-import { ErrorVisibilityProvider, ValidationForm, ValidationProvider, useFieldValidation } from '../src/react/index.js';
+import {
+  ErrorVisibilityProvider,
+  ValidationForm,
+  ValidationProvider,
+  useErrorVisibilityVersion,
+  useFieldValidation,
+  useShownErrors,
+  useValidationService,
+} from '../src/react/index.js';
 
 afterEach(cleanup);
 
@@ -99,5 +107,64 @@ describe('ErrorVisibility with React', () => {
     act(() => visibility.revealAll());
     expect(error('name')).toBe('Name is required');
     expect(error('city')).toBe('City is required');
+  });
+});
+
+// Errors shown outside a field: a summary of the booking's errors, next to the form that reports its validations.
+function Summary({ booking }: { booking: Booking }) {
+  const service = useValidationService();
+  const errors = useMemo(() => service.validateModelSync(booking, 'Booking'), [service, booking]);
+  const shown = useShownErrors(booking, errors);
+  return <ul data-testid="summary">{shown.map((e) => <li key={e.key}>{e.errorMessage}</li>)}</ul>;
+}
+
+function VersionProbe() {
+  return <span data-testid="version">{useErrorVisibilityVersion()}</span>;
+}
+
+function BookingWithSummary() {
+  const [booking] = useState<Booking>({ name: '', city: '', startDate: '', endDate: '' });
+  return (
+    <>
+      <ValidationForm model={booking} modelType="Booking">
+        <Field name="name" booking={booking} onChange={() => {}} />
+      </ValidationForm>
+      <Summary booking={booking} />
+      <VersionProbe />
+    </>
+  );
+}
+
+describe('useShownErrors', () => {
+  const summary = () => Array.from(screen.getByTestId('summary').querySelectorAll('li'), (li) => li.textContent);
+
+  it('re-renders errors shown outside a field on a touch and on revealAll()', () => {
+    const visibility = new ErrorVisibility();
+    render(
+      <ValidationProvider service={createValidationService({ metadata })}>
+        <ErrorVisibilityProvider visibility={visibility}>
+          <BookingWithSummary />
+        </ErrorVisibilityProvider>
+      </ValidationProvider>,
+    );
+    expect(summary()).toEqual([]);
+    const version = Number(screen.getByTestId('version').textContent);
+
+    fireEvent.blur(screen.getByLabelText('name'));
+    expect(summary()).toEqual(['Name is required']);
+    expect(Number(screen.getByTestId('version').textContent)).toBeGreaterThan(version);
+
+    act(() => visibility.revealAll());
+    expect(summary()).toEqual(['Name is required', 'City is required']);
+  });
+
+  it('shows every error without an ErrorVisibilityProvider', () => {
+    render(
+      <ValidationProvider service={createValidationService({ metadata })}>
+        <BookingWithSummary />
+      </ValidationProvider>,
+    );
+    expect(summary()).toEqual(['Name is required', 'City is required']);
+    expect(screen.getByTestId('version').textContent).toBe('0');
   });
 });

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // ErrorVisibility in the Angular integrations: template-driven forms, reactive forms and Signal Forms.
 import '@angular/compiler';
-import { Component, provideZonelessChangeDetection, signal } from '@angular/core';
+import { Component, computed, provideZonelessChangeDetection, signal } from '@angular/core';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormBuilder, FormsModule } from '@angular/forms';
 import { form } from '@angular/forms/signals';
@@ -15,8 +15,10 @@ import {
   ValidationFieldDirective,
   type ValidationFormDirective,
   ValidationFormsDirectives,
+  injectErrorVisibility,
   provideErrorVisibility,
   provideValidation,
+  validationErrors,
 } from '../src/angular/index.js';
 import { shownErrors, validateWithMetadata } from '../src/angular/signal-forms.js';
 import type { ValidationError } from '../src/core/validation-error.js';
@@ -211,5 +213,80 @@ describe('ErrorVisibility with Signal Forms', () => {
 
     visibility.revealAll();
     expect(shown(bookingForm.city().errors())).toEqual(['City is required']);
+  });
+});
+
+// Errors shown outside a field: a summary of the booking's errors, filtered in a computed and in the template.
+class SummaryHost {
+  booking = newBooking();
+  readonly visibility = injectErrorVisibility();
+  readonly errors = validationErrors(() => this.booking, 'Booking');
+  readonly shownErrors = computed(() => this.visibility.shown(this.booking, this.errors()));
+}
+
+const TestSummaryHost = Component({
+  selector: 'test-summary-host',
+  imports: [FormsModule, ValidationFormsDirectives],
+  providers: [provideErrorVisibility()],
+  template: `
+    <form [validationModel]="booking" validationModelType="Booking">
+      <input name="name" [(ngModel)]="booking.name" validationAriaInvalid />
+      <input name="city" [(ngModel)]="booking.city" />
+    </form>
+    <ul>
+      @for (e of visibility.shown(booking, errors()); track e.key) { <li>{{ e.errorMessage }}</li> }
+    </ul>
+  `,
+})(SummaryHost);
+
+describe('injectErrorVisibility', () => {
+  let fixture: ComponentFixture<SummaryHost>;
+
+  beforeEach(async () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [TestSummaryHost], providers: [provideZonelessChangeDetection(), provideValidation({ metadata })] });
+    fixture = TestBed.createComponent(TestSummaryHost);
+    fixture.detectChanges();
+    await fixture.whenStable();
+  });
+
+  const listed = () => Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('li'), (li) => li.textContent?.trim());
+  const input = (name: string) => fixture.debugElement.query(By.css(`input[name="${name}"]`)).nativeElement as HTMLInputElement;
+
+  it('updates errors shown outside a field, in a computed and a template, on a touch and on revealAll()', async () => {
+    expect(fixture.componentInstance.shownErrors()).toEqual([]);
+    expect(listed()).toEqual([]);
+
+    input('name').dispatchEvent(new Event('blur'));
+    await fixture.whenStable();
+    expect(messagesOf(fixture.componentInstance.shownErrors())).toEqual(['Name is required']);
+    expect(listed()).toEqual(['Name is required']);
+
+    fixture.debugElement.injector.get(ErrorVisibility).revealAll();
+    await fixture.whenStable();
+    expect(messagesOf(fixture.componentInstance.shownErrors())).toEqual(['Name is required', 'City is required']);
+    expect(listed()).toEqual(['Name is required', 'City is required']);
+  });
+
+  it('sets aria-invalid on a field with validationAriaInvalid while it has errors to show', async () => {
+    expect(input('name').hasAttribute('aria-invalid')).toBe(false);
+
+    input('name').dispatchEvent(new Event('blur'));
+    await fixture.whenStable();
+    expect(input('name').getAttribute('aria-invalid')).toBe('true');
+    expect(input('city').hasAttribute('aria-invalid')).toBe(false);
+
+    input('name').value = 'Ann';
+    input('name').dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    expect(input('name').hasAttribute('aria-invalid')).toBe(false);
+  });
+
+  it('shows every error without a provided visibility', () => {
+    const wrapper = TestBed.runInInjectionContext(() => injectErrorVisibility());
+    const errors = [{ key: 'a', propertyNames: [] }] as unknown as ValidationError[];
+    expect(wrapper.visibility).toBeNull();
+    expect(wrapper.shown({}, errors)).toEqual(errors);
+    expect(wrapper.version()).toBe(0);
   });
 });

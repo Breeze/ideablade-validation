@@ -99,6 +99,16 @@ const [visibility] = useState(() => new ErrorVisibility({ isNew: breezeIsNew }))
 - `useFieldValidation` then returns the errors to show in `errors`, `messages`, `message` and `invalid`, and all of them in `allErrors`. Report touches with its `markTouched`: `onBlur={field.markTouched}`.
 - `useValidation` reports each validation, and returns `shownErrorsFor(property?)` and `markTouched(property)`. Its `visibility` option overrides the provider's; `null` turns it off.
 - A model replaced by a copy on every change, as with `useState`, keeps what the visibility knows about it: a different object between renders of the same hook is taken to be the same model, edited.
+- For errors shown outside a field, such as a rule about the whole model from `useEntityStoreValidation`, `useShownErrors(model, errors)` returns those to show and re-renders when the visibility changes, so a touch or `revealAll()` shows them. Without a provider (or with `null` as its third argument), it returns all of them. Calling `visibility.shown` from `useErrorVisibility()` in render would not re-render.
+
+```tsx
+const result = useEntityStoreValidation();
+const orderErrors = useShownErrors(order, result?.validationErrors.filter((e) => e.model === order && e.propertyNames.length === 0) ?? []);
+```
+
+- `useErrorVisibilityVersion()` re-renders on the same changes and returns a number, for a `useMemo` of your own that calls `shown` or `isShown`.
+
+To give such errors a baseline when no form validates their model, report the entity store validation to the visibility: `useEffect(() => { if (result) visibility.observeEntities(result); }, [visibility, result])`.
 
 ## Scopes: `useValidationScope(entityStore)`
 

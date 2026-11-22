@@ -307,6 +307,21 @@ export class OrderEditorComponent {
 </form>
 ```
 
+Add `validationAriaInvalid` to a field to set `aria-invalid="true"` on it while it has errors to show, so screen readers announce what the user sees: `<input name="city" [(ngModel)]="booking.city" validationAriaInvalid />`. It is part of `ValidationFormsDirectives`. Other presentation, such as a `title` or a component library's `invalid` input, is up to the app: bind it to `hasShownErrors()`.
+
+**Errors outside a field.** For errors the forms don't show, such as a rule about the whole model from entity store validation, `injectErrorVisibility()` wraps the provided visibility for signals. Its `shown(model, errors)` and `isShown(model, error)` read the visibility's version, so a `computed` or template that calls them follows touches, validations and `revealAll()`. Without a visibility provided, every error shows.
+
+```ts
+private readonly visibility = injectErrorVisibility();
+readonly result = toSignal(inject(ValidationService).validateEntityStore());
+readonly orderErrors = computed(() =>
+  this.visibility.shown(this.order, (this.result()?.validationErrors ?? []).filter((e) => e.model === this.order && e.propertyNames.length === 0)),
+);
+// or in the template: @for (e of visibility.shown(order, orderErrors()); track e.key) { ... }
+```
+
+Calling `ErrorVisibility.shown` directly in a `computed` would not follow the visibility. `trackVisibility(visibility)` inside the `computed` does the same as the wrapper and stays for compatibility; `visibilityVersion(visibility)` is the version signal itself. To give such errors a baseline when no form validates their model, use `provideErrorVisibility({ watchEntityStore: true })`.
+
 **Reactive forms.** Pass the visibility to `validateFormGroup`. The returned `FormModelValidation` reports the controls' touches, and `shownErrorsAbout(property)` gives the errors to show; without a property, those about the model as a whole.
 
 ```ts

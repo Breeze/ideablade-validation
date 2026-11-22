@@ -213,8 +213,8 @@ export function provideErrorVisibility(options: ProvideErrorVisibilityOptions | 
 
 const visibilityVersions = new WeakMap<ErrorVisibility, Signal<number>>();
 
-/** Reads a signal that changes with the visibility's state, so a template or `computed` that calls this follows it. */
-export function trackVisibility(visibility: ErrorVisibility): void {
+/** A signal of the visibility's {@link ErrorVisibility.version}: it changes whenever what the visibility shows can. */
+export function visibilityVersion(visibility: ErrorVisibility): Signal<number> {
   let version = visibilityVersions.get(visibility);
   if (!version) {
     const counter = signal(visibility.version);
@@ -223,7 +223,75 @@ export function trackVisibility(visibility: ErrorVisibility): void {
     version = counter.asReadonly();
     visibilityVersions.set(visibility, version);
   }
-  version();
+  return version;
+}
+
+/**
+ * Reads a signal that changes with the visibility's state, so a template or `computed` that calls this follows it.
+ * {@link injectErrorVisibility} does this for you.
+ */
+export function trackVisibility(visibility: ErrorVisibility): void {
+  visibilityVersion(visibility)();
+}
+
+/**
+ * The provided {@link ErrorVisibility}, for signals: {@link shown} and {@link isShown} read its version, so a
+ * `computed` or template that calls them follows touches, validations and `revealAll()`. Without a visibility, every
+ * error shows.
+ */
+export interface ErrorVisibilitySignals {
+  /** The visibility, or null when none is provided. */
+  readonly visibility: ErrorVisibility | null;
+  /** A number that changes whenever what the visibility shows can change; 0 without one. */
+  readonly version: Signal<number>;
+  /** The errors of `errors`, about `model`, to show. Reactive. */
+  shown<T extends ValidationError>(model: unknown, errors: readonly T[]): T[];
+  /** Whether to show `error`, an error about `model`. Reactive. */
+  isShown(model: unknown, error: ValidationError): boolean;
+  /** Shows every error, as after a save attempt ({@link ErrorVisibility.revealAll}). */
+  revealAll(): void;
+  /** Records that the user touched a property of a model ({@link ErrorVisibility.markTouched}). */
+  markTouched(model: unknown, propertyName: string): void;
+}
+
+const noVersion: Signal<number> = computed(() => 0);
+
+/**
+ * The provided {@link ErrorVisibility} wrapped for signals ({@link ErrorVisibilitySignals}), for errors shown outside a
+ * field, such as a rule about the whole model from entity store validation. Must be called in an injection context,
+ * or pass the `visibility` to wrap.
+ *
+ * @example
+ * private readonly visibility = injectErrorVisibility();
+ * readonly shownErrors = computed(() => this.visibility.shown(this.resource(), this.resourceErrors()));
+ */
+export function injectErrorVisibility(visibility?: ErrorVisibility | null): ErrorVisibilitySignals {
+  const used = visibility !== undefined ? visibility : inject(ErrorVisibility, { optional: true });
+  if (!used) {
+    return {
+      visibility: null,
+      version: noVersion,
+      shown: (_model, errors) => [...errors],
+      isShown: () => true,
+      revealAll: () => {},
+      markTouched: () => {},
+    };
+  }
+  const version = visibilityVersion(used);
+  return {
+    visibility: used,
+    version,
+    shown: (model, errors) => {
+      version();
+      return used.shown(model, errors);
+    },
+    isShown: (model, error) => {
+      version();
+      return used.isShown(model, error);
+    },
+    revealAll: () => used.revealAll(),
+    markTouched: (model, propertyName) => used.markTouched(model, propertyName),
+  };
 }
 
 export function provideValidationMetadata(...metadata: ModelValidationMetadataLike[]): Provider[] {
@@ -992,7 +1060,49 @@ export class ValidationFieldDirective implements Validator, OnChanges {
 }
 
 /**
+ * Sets `aria-invalid="true"` on a field while it has errors to show ({@link ValidationFieldDirective.hasShownErrors}),
+ * so screen readers announce what the user sees. Add `validationAriaInvalid` to the field:
+ *
+ * ```html
+ * <input name="city" [(ngModel)]="booking.city" validationAriaInvalid />
+ * ```
+ */
+export class ValidationAriaInvalidDirective {
+  /** The field's validation, on the same element. */
+  readonly field = inject(ValidationFieldDirective, { self: true });
+
+  static ɵfac: i0.ɵɵFactoryDeclaration<ValidationAriaInvalidDirective, never> = i0.ɵɵngDeclareFactory({
+    minVersion: '12.0.0',
+    version: '17.1.0',
+    ngImport: i0,
+    type: ValidationAriaInvalidDirective,
+    deps: [],
+    target: i0.ɵɵFactoryTarget.Directive,
+  } as never) as never;
+
+  static ɵdir: i0.ɵɵDirectiveDeclaration<
+    ValidationAriaInvalidDirective,
+    '[ngModel][validationAriaInvalid]:not([formControlName]):not([formControl])',
+    never,
+    {},
+    {},
+    never,
+    never,
+    true,
+    never
+  > = i0.ɵɵngDeclareDirective({
+    minVersion: '14.0.0',
+    version: '17.1.0',
+    type: ValidationAriaInvalidDirective,
+    isStandalone: true,
+    selector: '[ngModel][validationAriaInvalid]:not([formControlName]):not([formControl])',
+    host: { properties: { 'attr.aria-invalid': 'field.hasShownErrors() ? "true" : null' } },
+    ngImport: i0,
+  } as never) as never;
+}
+
+/**
  * The template-driven-forms directives. Import them next to `FormsModule`:
  * `imports: [FormsModule, ValidationFormsDirectives]`.
  */
-export const ValidationFormsDirectives = [ValidationFormDirective, ValidationFieldDirective] as const;
+export const ValidationFormsDirectives = [ValidationFormDirective, ValidationFieldDirective, ValidationAriaInvalidDirective] as const;
