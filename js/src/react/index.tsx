@@ -87,6 +87,38 @@ export function useErrorVisibility(): ErrorVisibility | null {
   return useContext(ErrorVisibilityContext);
 }
 
+/**
+ * Re-renders when what the {@link ErrorVisibility} shows can change (a validation, a touch, `revealAll()`), and returns
+ * its version: a number for the dependencies of a `useMemo` that calls `visibility.shown` or `isShown`. Default: the
+ * nearest {@link ErrorVisibilityProvider}'s visibility; without one (or with `null`), always 0.
+ */
+export function useErrorVisibilityVersion(visibility?: ErrorVisibility | null): number {
+  const contextVisibility = useErrorVisibility();
+  return useVisibilityVersion(visibility !== undefined ? visibility : contextVisibility);
+}
+
+/**
+ * The errors of `errors`, about `model`, to show: without those the {@link ErrorVisibility} hides. For errors shown
+ * outside a field, such as a rule about the whole model from {@link useEntityStoreValidation}. Re-renders when the
+ * visibility changes, so a touch or `revealAll()` shows them. Default: the nearest {@link ErrorVisibilityProvider}'s
+ * visibility; without one (or with `null`), all of `errors`.
+ *
+ * @example
+ * const result = useEntityStoreValidation();
+ * const shown = useShownErrors(order, result?.validationErrors.filter((e) => e.model === order) ?? []);
+ */
+export function useShownErrors<T extends ValidationError>(model: unknown, errors: readonly T[], visibility?: ErrorVisibility | null): T[] {
+  const contextVisibility = useErrorVisibility();
+  const used = visibility !== undefined ? visibility : contextVisibility;
+  const version = useVisibilityVersion(used);
+  return useMemo(
+    () => (used ? used.shown(model, errors) : [...errors]),
+    // version: what the visibility shows changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [used, model, errors, version],
+  );
+}
+
 const noSubscription = () => () => {};
 
 /** Re-renders when the visibility changes, and returns its version. */
