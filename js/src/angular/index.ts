@@ -523,10 +523,25 @@ export class FormModelValidation {
     this.last = { values, errors };
     untracked(() => {
       this.state.set(errors);
-      // The errors are of a view of the model; the visibility knows the model itself.
-      this.visibility?.observe(info.entity, errors);
+      this.observeModel(target);
     });
     return errors;
+  }
+
+  /**
+   * Reports the errors of the model itself to the visibility, not those of the controls' view of it: right after the
+   * form switches to another model, the controls still hold the old one's values, and those must not become the new
+   * model's baseline. Errors the controls' values cause are then new to the visibility, so they show, as they should.
+   */
+  private observeModel({ info, group, context }: FormModelTarget): void {
+    if (!this.visibility) {
+      return;
+    }
+    const errors = this.validationService.validateModelSync(info.entity, info.entityType, {
+      predicate: matchGroup(group),
+      context: { ...context, originalModel: info.entity },
+    });
+    this.visibility.observe(info.entity, errors);
   }
 
   /** Re-validates every control, e.g. after the model changed in a way nothing reported. */
