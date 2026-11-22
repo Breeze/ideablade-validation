@@ -120,6 +120,31 @@ The form integrations validate the whole model, with the current values of all f
 
 > **In TempHire:** "a staffing resource is at least 18 years old when hired" names `dateOfBirth` and `hireDate` (`ADULT_WHEN_HIRED` in [`validation.metadata.json`](https://github.com/Breeze/temphire.server/blob/main/TempHire.Server/Validation/validation.metadata.json)). Both date fields show it, and the summary card shows its message once, under the dates: [`resource-summary.component.ts`](https://github.com/Breeze/temphire.angular/blob/master/client/src/app/resource-mgt/resource-summary.component.ts) (Angular), [`ResourceSummary.tsx`](https://github.com/Breeze/temphire.react/blob/main/client/src/app/resource-mgt/ResourceSummary.tsx) (React).
 
+## Showing errors: error visibility
+
+A new model breaks its rules before the user has done anything: an empty form misses every required field. Showing all of that in red at once is jarring. Showing a field's errors only once it has been touched misses errors that land on fields the user has not touched: a rule across two fields, a condition, a rule about the whole model. And everything should show once the user tries to save.
+
+`ErrorVisibility` decides which errors to show. Validation itself does not change: every rule runs, forms are as valid or invalid as before, and saving still checks everything.
+
+- **Models that are not new show all their errors.** If loaded data breaks a rule, the user should see it. `isNew` decides; by default every model is new, and for Breeze, `breezeIsNew` counts only added entities ([breeze.md](breeze.md#new-entities-breezeisnew)).
+- **A new model's first validation sets its baseline**: the errors it starts with. They are hidden.
+- **A baseline error shows once a field it is about has been touched**: edited, or left.
+- **Any other error shows at once**, on every field it is about: something the user did caused it. Hire date before the date of birth shows on both dates, a field that a condition makes required shows when the condition changes, and deleting the last address shows "at least one address".
+- **A baseline error that goes away leaves the baseline**, so it shows if it comes back.
+- **`revealAll()` on a save attempt** shows every error the models have then. Models first validated afterwards, such as another address added after the attempt, start with a baseline of their own.
+
+```ts
+const visibility = new ErrorVisibility({ isNew: breezeIsNew });
+
+visibility.shown(model, errors);    // the errors to show
+visibility.revealAll();             // on a save attempt
+visibility.reset();                 // for another record
+```
+
+The form integrations feed it: they report each validation and each touch, and offer the errors to show next to all of them ([Angular](angular.md#showing-errors-errorvisibility), [React](react.md#showing-errors-errorvisibility)). Errors shown outside a form, such as a rule about the whole model in a message of its own, use `visibility.shown(model, errors)`; `visibility.watch(service.validateEntityStore())` gives their models a baseline when no form validates them.
+
+Models are told apart by identity, and errors by their key, so give model-level rules an `id` ([Error keys](metadata.md#error-keys)). A form that replaces its model with a copy on every change (Signal Forms, immutable React state) carries the state from copy to copy; the integrations do that for you.
+
 ## Rule sources
 
 Not every rule lives in the validation metadata. Data frameworks keep their own: Breeze builds `required` and `maxLength` validators from the server model's `[Required]` and `[StringLength]` attributes, and an ORM or a schema registry knows column lengths. For entities that's fine when a validator already runs those rules on the entity, as the `breeze` validator does for Breeze entities. A **view model** that edits some of an entity's properties has no such link.

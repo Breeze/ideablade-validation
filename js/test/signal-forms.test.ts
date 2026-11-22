@@ -6,7 +6,7 @@ import { TestBed } from '@angular/core/testing';
 import { form } from '@angular/forms/signals';
 import { BrowserTestingModule, platformBrowserTesting } from '@angular/platform-browser/testing';
 import { DataProperty, DataType, EntityType, MetadataStore, Validator } from 'breeze-client';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { provideRuleSources, provideValidation } from '../src/angular/index.js';
 import { type MetadataFormError, validateWithMetadata } from '../src/angular/signal-forms.js';
@@ -51,7 +51,12 @@ interface ResourceName {
   nickname: string;
 }
 
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/** Waits until `check` passes, running change detection before each try: async rules answer when they answer. */
+const eventually = (check: () => void) =>
+  vi.waitFor(() => {
+    TestBed.tick();
+    check();
+  });
 
 beforeAll(() => {
   TestBed.initTestEnvironment(BrowserTestingModule, platformBrowserTesting());
@@ -103,17 +108,13 @@ describe('validateWithMetadata (Signal Forms) with from + breezeRuleSource', () 
 
   it('runs async rules, metadata and Breeze, once the sync rules pass', async () => {
     const { model, nameForm } = createForm({ firstName: 'Ann', surname: 'Blocked', nickname: 'taken' });
-    TestBed.tick();
-    await delay(20);
-    TestBed.tick();
-    expect(messages(nameForm.surname().errors())).toEqual(['Last name is blocked']);
-    expect(messages(nameForm.nickname().errors())).toEqual(['nickname is taken']);
+    await eventually(() => {
+      expect(messages(nameForm.surname().errors())).toEqual(['Last name is blocked']);
+      expect(messages(nameForm.nickname().errors())).toEqual(['nickname is taken']);
+    });
 
     model.update((m) => ({ ...m, surname: 'Smith', nickname: 'annie' }));
-    TestBed.tick();
-    await delay(20);
-    TestBed.tick();
-    expect(nameForm().valid()).toBe(true);
+    await eventually(() => expect(nameForm().valid()).toBe(true));
   });
 });
 
@@ -171,11 +172,6 @@ describe('validateWithMetadata (Signal Forms): rules across fields', () => {
     return { model, bookingForm };
   }
   const messages = (errors: readonly { message?: string }[]) => errors.map((e) => e.message);
-  const settle = async () => {
-    TestBed.tick();
-    await delay(20);
-    TestBed.tick();
-  };
 
   it('shows a rule about two fields on both, and re-checks both when one changes', () => {
     const { bookingForm } = createForm();
@@ -220,12 +216,11 @@ describe('validateWithMetadata (Signal Forms): rules across fields', () => {
 
     bookingForm.domain().value.set('acme');
     bookingForm.login().value.set('taken');
-    await settle();
-    expect(messages(bookingForm.login().errors())).toEqual(['Login is taken']);
+    await eventually(() => expect(messages(bookingForm.login().errors())).toEqual(['Login is taken']));
 
     bookingForm.domain().value.set('other');
-    await settle();
+    // Valid only once the re-run has answered.
+    await eventually(() => expect(bookingForm().valid()).toBe(true));
     expect(bookingForm.login().errors()).toEqual([]);
-    expect(bookingForm().valid()).toBe(true);
   });
 });

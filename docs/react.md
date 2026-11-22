@@ -83,6 +83,23 @@ function TextField({ model, property }: { model: Customer; property: keyof Custo
 
 > **In TempHire:** [`EntityFields.tsx`](https://github.com/Breeze/temphire.react/blob/main/client/src/app/core/validation/EntityFields.tsx) has the inputs, each showing its property's errors with `useFieldValidation`. [`ResourceAddressList.tsx`](https://github.com/Breeze/temphire.react/blob/main/client/src/app/resource-mgt/sections/ResourceAddressList.tsx) wraps each address card in `<ValidationForm model={address}>`, and [`ResourceSummary.tsx`](https://github.com/Breeze/temphire.react/blob/main/client/src/app/resource-mgt/ResourceSummary.tsx) shows a rule about two dates once.
 
+## Showing errors: `ErrorVisibility`
+
+Wrap a screen in an `ErrorVisibilityProvider` to hide a new model's first errors until the user gets to them, and to show everything after a save attempt ([how it decides](concepts.md#showing-errors-error-visibility)). Validation does not change: `isValid` and `errors` still count every error.
+
+```tsx
+const [visibility] = useState(() => new ErrorVisibility({ isNew: breezeIsNew }));
+
+<ErrorVisibilityProvider visibility={visibility}>
+  <ValidationForm model={booking}>...</ValidationForm>
+  <button onClick={() => (isValid ? save() : visibility.revealAll())}>Save</button>
+</ErrorVisibilityProvider>
+```
+
+- `useFieldValidation` then returns the errors to show in `errors`, `messages`, `message` and `invalid`, and all of them in `allErrors`. Report touches with its `markTouched`: `onBlur={field.markTouched}`.
+- `useValidation` reports each validation, and returns `shownErrorsFor(property?)` and `markTouched(property)`. Its `visibility` option overrides the provider's; `null` turns it off.
+- A model replaced by a copy on every change, as with `useState`, keeps what the visibility knows about it: a different object between renders of the same hook is taken to be the same model, edited.
+
 ## Scopes: `useValidationScope(entityStore)`
 
 A validation service has one entity store, the entities of its scope, such as a unit of work's ([concepts.md](concepts.md#scopes-a-service-and-its-entity-store)). `useValidationScope` returns a service with the nearest provider's metadata and options and its own store; provide it to the components of the scope:

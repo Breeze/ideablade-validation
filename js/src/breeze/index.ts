@@ -47,6 +47,17 @@ export function isBreezeEntity(value: unknown): value is Entity {
 export const breezeModelType: ModelTypeResolver = (model) => (isBreezeEntity(model) ? model.entityType.shortName : undefined);
 
 /**
+ * For `ErrorVisibility`: whether a model is new, so the errors it starts with wait until the user gets to them.
+ * A Breeze entity is new while it is added (`EntityState.Added`); loaded entities show all their errors. Anything else,
+ * such as a view model, counts as new.
+ *
+ * @example new ErrorVisibility({ isNew: breezeIsNew })
+ */
+export function breezeIsNew(model: object): boolean {
+  return isBreezeEntity(model) ? model.entityAspect.entityState.isAdded() : true;
+}
+
+/**
  * The entity states that count as "in the store": Unchanged, Added and Modified. Deleted entities stay in the manager
  * until saved, but they are on their way out; detached entities aren't in it at all.
  */
