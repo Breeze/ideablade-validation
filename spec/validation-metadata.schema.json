@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ideablade.com/schemas/validation-metadata.schema.json",
   "title": "IdeaBlade validation metadata",
-  "description": "Validation rules keyed by model type, plus an optional 'global' section. Used by both @ideablade/validation (TypeScript) and IdeaBlade.Validation (.NET). See docs/metadata.md.",
+  "description": "Validation rules keyed by model type, plus an optional 'global' section. Used by both ideablade-validation (TypeScript) and IdeaBlade.Validation (.NET). See docs/metadata.md.",
   "type": "object",
   "properties": {
     "$schema": { "type": "string" },

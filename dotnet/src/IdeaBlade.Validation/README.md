@@ -1,7 +1,7 @@
 # IdeaBlade.Validation
 
 Data-store agnostic, metadata-driven validation for .NET. This is the server-side counterpart of the
-`@ideablade/validation` npm package. Both use the same JSON metadata, the same validator names and the same
+`ideablade-validation` npm package. Both use the same JSON metadata, the same validator names and the same
 safe expression language, so client and server validate identically.
 
 ```csharp

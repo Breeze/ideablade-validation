@@ -1,8 +1,8 @@
 # Concepts
 
-`@ideablade/validation` (TypeScript) and `IdeaBlade.Validation` (.NET) validate **any object** against rules described in **JSON metadata**. The framework doesn't care where objects come from: Breeze entities, plain objects, view models, EF entities and DTOs all work. The same metadata runs in the browser and on the server.
+`ideablade-validation` (TypeScript) and `IdeaBlade.Validation` (.NET) validate **any object** against rules described in **JSON metadata**. The framework doesn't care where objects come from: Breeze entities, plain objects, view models, EF entities and DTOs all work. The same metadata runs in the browser and on the server.
 
-The core doesn't depend on any persistence layer either. What it needs from one, it gets through a few public extension points: an entity store, a model type resolver, and optionally rule sources and validators. `@ideablade/validation/breeze` is a ready-made implementation of those for Breeze, and any other data layer is integrated the same way ([Integrating your data layer](#integrating-your-data-layer)).
+The core doesn't depend on any persistence layer either. What it needs from one, it gets through a few public extension points: an entity store, a model type resolver, and optionally rule sources and validators. `ideablade-validation/breeze` is a ready-made implementation of those for Breeze, and any other data layer is integrated the same way ([Integrating your data layer](#integrating-your-data-layer)).
 
 ```
           JSON metadata                         Validator factories (DI)
@@ -51,7 +51,7 @@ Some validations start from nothing but a model, such as a form bound to an obje
 - **Forms validate a view of the model.** A form checks a view of the model that has the controls' values in place of the properties. The view inherits from the model, so a resolver that reads properties, or checks for them with `in`, sees the model's values. An `instanceof` check also passes. Only an identity check (`model === entity`) fails. If you need the model object itself, `Object.getPrototypeOf(view)` returns it.
 
 ```ts
-import { createValidationService, type ModelTypeResolver } from '@ideablade/validation';
+import { createValidationService, type ModelTypeResolver } from 'ideablade-validation';
 
 // View models tagged with a $type property
 const taggedModelType: ModelTypeResolver = (model) => (model as { $type?: string } | null)?.$type;
@@ -174,7 +174,7 @@ With Breeze's rule source registered, for example, `PersonName.firstName` gets B
 Return an entry, possibly without validators, for **every** property the source knows. `from` treats a reference that neither the metadata nor any rule source knows as a typo and throws an error.
 
 ```ts
-import { type RuleSource, createValidationService } from '@ideablade/validation';
+import { type RuleSource, createValidationService } from 'ideablade-validation';
 
 // Column lengths from a database schema. It only uses built-in validators, so it lists none.
 const columns: RuleSource = {
@@ -199,7 +199,7 @@ Rules are looked up when a property is first validated, and then cached until th
 
 ### Breeze
 
-`breezeRuleSource(metadataStore)` from `@ideablade/validation/breeze` knows every property of every entity type in the store. For a property, it returns Breeze's display name and a `breezeProperty` validator that runs that property's Breeze validators on a value, both sync and async. See [breeze.md](breeze.md#rules-for-view-models-breezerulesource).
+`breezeRuleSource(metadataStore)` from `ideablade-validation/breeze` knows every property of every entity type in the store. For a property, it returns Breeze's display name and a `breezeProperty` validator that runs that property's Breeze validators on a value, both sync and async. See [breeze.md](breeze.md#rules-for-view-models-breezerulesource).
 
 ## Writing an entity store
 
@@ -240,7 +240,7 @@ Most sources that only signal changes don't expose an Observable at all. They ra
 - `changes`, which tells the store when the source changed. This is a function that starts listening, calls `notify` on every change, and returns how to stop listening. It can return a function, an object with `unsubscribe()`, or nothing. An Observable works too.
 
 ```ts
-import { createEntityStore } from '@ideablade/validation';
+import { createEntityStore } from 'ideablade-validation';
 
 const store = createEntityStore({
   entities: () => cart.items.map((entity) => ({ entityType: 'CartItem', entity })),
@@ -252,7 +252,7 @@ const store = createEntityStore({
 });
 ```
 
-For signal libraries whose `effect()` returns a disposer, such as Preact or Solid, `changes` is one line: `(notify) => effect(() => { items.value; notify(); })`. For Angular signals, use `signalEntityStore` from `@ideablade/validation/angular` ([angular.md](angular.md#validating-a-set-of-entities)).
+For signal libraries whose `effect()` returns a disposer, such as Preact or Solid, `changes` is one line: `(notify) => effect(() => { items.value; notify(); })`. For Angular signals, use `signalEntityStore` from `ideablade-validation/angular` ([angular.md](angular.md#validating-a-set-of-entities)).
 
 Don't batch the notifications yourself: the validation service coalesces them ([coalescing](#coalescing)). `breezeEntityStore` and `signalEntityStore` are built on `createEntityStore` too.
 
@@ -277,7 +277,7 @@ So between a change and its run, the latest result is the one from before the ch
 
 The framework works with any persistence layer: Breeze, an ORM or a REST client, a GraphQL cache, NgRx, MobX, or plain objects in memory. The core never talks to a data layer directly. It asks for what it needs through a few public extension points, and an integration is just an implementation of them.
 
-`@ideablade/validation/breeze` is such an integration, ready-made for Breeze. It's built only on these extension points and on what the core exports, with no special access. Integrating another data layer takes the same pieces, and you only need the ones your app uses:
+`ideablade-validation/breeze` is such an integration, ready-made for Breeze. It's built only on these extension points and on what the core exports, with no special access. Integrating another data layer takes the same pieces, and you only need the ones your app uses:
 
 | Extension point | What it tells the framework | Needed for | Core API | Breeze's implementation |
 |---|---|---|---|---|
@@ -290,7 +290,7 @@ The framework works with any persistence layer: Breeze, an ORM or a REST client,
 A sketch for a simple in-memory data layer whose entities carry their type in a `$type` property:
 
 ```ts
-import { createEntityStore, createValidationService, syncValidator, type ModelTypeResolver } from '@ideablade/validation';
+import { createEntityStore, createValidationService, syncValidator, type ModelTypeResolver } from 'ideablade-validation';
 import { firstValueFrom } from 'rxjs';
 
 // Your data layer, for example:

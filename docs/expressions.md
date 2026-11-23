@@ -70,7 +70,7 @@ Functions in the expression scope can always be called by name: `store('Order')`
 ## Customizing
 
 ```ts
-import { SafeExpressionEvaluator, createValidationService } from '@ideablade/validation';
+import { SafeExpressionEvaluator, createValidationService } from 'ideablade-validation';
 
 const service = createValidationService({
   metadata,
@@ -95,7 +95,7 @@ const jsonLogicEvaluator: ExpressionEvaluator = {
 Check expressions when they're saved, not when they run:
 
 ```ts
-import { checkExpression } from '@ideablade/validation';
+import { checkExpression } from 'ideablade-validation';
 
 const result = checkExpression(rule.condition);
 if (!result.valid) {

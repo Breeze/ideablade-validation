@@ -10,7 +10,7 @@ import { type ModelValidationMetadataMap, createValidationService, isModelTypeKe
  */
 describe('$schema and $comment in the metadata', () => {
   const metadata: ModelValidationMetadataMap = {
-    $schema: '../node_modules/@ideablade/validation/schema/validation-metadata.schema.json',
+    $schema: '../node_modules/ideablade-validation/schema/validation-metadata.schema.json',
     $comment: ['The rules for people.', 'A second paragraph.'],
     global: { $comment: 'Every model has an id.', validators: [{ $comment: 'id', name: 'expression', context: { expression: 'model.id != null', messageTemplate: 'Missing id' } }] },
     Person: {

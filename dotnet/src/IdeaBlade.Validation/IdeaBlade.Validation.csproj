@@ -10,7 +10,7 @@
 
     <PackageId>IdeaBlade.Validation</PackageId>
     <Version>0.1.0</Version>
-    <Description>Data-store agnostic, metadata-driven validation framework. Server-side (.NET) counterpart of the @ideablade/validation npm package: the same JSON metadata, validators and safe expression language on client and server.</Description>
+    <Description>Data-store agnostic, metadata-driven validation framework. Server-side (.NET) counterpart of the ideablade-validation npm package: the same JSON metadata, validators and safe expression language on client and server.</Description>
     <PackageTags>validation;metadata;rules;breeze;expressions</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>

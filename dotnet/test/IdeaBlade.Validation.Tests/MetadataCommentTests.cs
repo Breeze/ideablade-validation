@@ -12,7 +12,7 @@ public class MetadataCommentTests
 {
     private const string Metadata = """
         {
-          "$schema": "../node_modules/@ideablade/validation/schema/validation-metadata.schema.json",
+          "$schema": "../node_modules/ideablade-validation/schema/validation-metadata.schema.json",
           "$comment": ["The rules for people.", "A second paragraph."],
           "global": {
             "$comment": "Every model has an id.",

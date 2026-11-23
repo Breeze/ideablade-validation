@@ -1,5 +1,5 @@
 {
-  "name": "@ideablade/validation",
+  "name": "ideablade-validation",
   "version": "0.1.0",
   "description": "Data-store agnostic, metadata-driven validation framework with Angular providers, React hooks and a Breeze adapter.",
   "keywords": [
