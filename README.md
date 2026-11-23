@@ -118,4 +118,4 @@ cd js; npm install; npm test; npm run build
 cd dotnet; dotnet test; dotnet pack -c Release -o artifacts
 ```
 
-Node.js ≥ 22 (the package is ESM-only) and the .NET 10 SDK are required.
+Node.js ≥ 22 (the package is ESM-only) and the .NET 10 SDK are required. `.node-version` pins the Node.js version for working on the repository, the current 26 LTS, which version managers such as nvs (`nvs auto`) and fnm pick up; CI tests on Node.js 22, 24 and 26.
