@@ -7,7 +7,7 @@ export interface ErrorVisibilityOptions {
   /**
    * Whether a model is new, so the errors it starts with are hidden until the user gets to them. Default: every model
    * is. Models that are not new show all their errors: if loaded data breaks a rule, the user should see it. For Breeze
-   * entities, pass `breezeIsNew` from `@ideablade/validation/breeze`: only added entities are new.
+   * entities, pass `breezeIsNew` from `ideablade-validation/breeze`: only added entities are new.
    */
   isNew?: (model: object) => boolean;
 }

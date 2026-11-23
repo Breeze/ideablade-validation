@@ -1,6 +1,6 @@
 # Breeze
 
-`@ideablade/validation/breeze` integrates with **breeze-client 3**, which is an optional peer dependency. Breeze isn't required for anything else in the library.
+`ideablade-validation/breeze` integrates with **breeze-client 3**, which is an optional peer dependency. Breeze isn't required for anything else in the library.
 
 This module is a ready-made integration, not a special case: it implements the core's generic, public extension points (an [entity store](concepts.md#writing-an-entity-store), a [model type resolver](concepts.md#resolvers), a [rule source](concepts.md#rule-sources) and a [validator](validators.md#writing-a-validator)) for Breeze. If your app uses another persistence layer, implement the same pieces for it; see [Integrating your data layer](concepts.md#integrating-your-data-layer).
 
@@ -11,7 +11,7 @@ The integration works in both directions, and you can use either one or both tog
 Register `breezeValidator` and reference it from metadata, typically as a **global** validator so that every entity is checked against Breeze's validators: the server metadata's `required`, `maxLength`, data type validators, and your own Breeze validators.
 
 ```ts
-import { breezeValidator } from '@ideablade/validation/breeze';
+import { breezeValidator } from 'ideablade-validation/breeze';
 
 createValidationService({ metadata, validators: [breezeValidator] });
 ```
@@ -74,7 +74,7 @@ The `breeze` validator skips errors from validators that `installBreezeValidator
 When your UI binds to Breeze's validation errors, or you rely on Breeze validating before save, install the metadata rules into the `MetadataStore`:
 
 ```ts
-import { installBreezeValidators } from '@ideablade/validation/breeze';
+import { installBreezeValidators } from 'ideablade-validation/breeze';
 
 const uninstall = installBreezeValidators(manager.metadataStore, validationService, {
   // entityTypes: ['Customer', 'Order'],   // default: all entity types
@@ -98,7 +98,7 @@ Inside these validators, `store(type)` returns the live entities of that type in
 ## 3. Validating a whole EntityManager (`breezeEntityStore`)
 
 ```ts
-import { breezeEntityStore } from '@ideablade/validation/breeze';
+import { breezeEntityStore } from 'ideablade-validation/breeze';
 
 validationService
   .validateEntityStore(breezeEntityStore(manager, { entityTypes: ['Order', 'OrderLine'] }))
@@ -172,7 +172,7 @@ A dialog or form often edits a view model instead of the entity, and assigns the
 Register the rule source with the `MetadataStore`. If the store is filled later, pass a function that returns it:
 
 ```ts
-import { breezeRuleSource } from '@ideablade/validation/breeze';
+import { breezeRuleSource } from 'ideablade-validation/breeze';
 
 createValidationService({ metadata, ruleSources: [breezeRuleSource(() => manager.metadataStore)] });
 // Angular:

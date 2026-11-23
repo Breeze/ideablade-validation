@@ -25,7 +25,7 @@ All of these are registered by default (`defaultValidators` in TS, `DefaultValid
 | `validValues` | `values` | same |
 | `expression` | `expression`, `skipEmpty` | `%displayName% is invalid` |
 | `unique` | `ignoreCase`. Needs `store(type)`: entity store validation and `options.store` supply one, and for single models and forms, the service's [entity store](concepts.md#scopes-a-service-and-its-entity-store). Without a store it passes. | `%displayName% must be unique` |
-| `breeze` (TS, from `@ideablade/validation/breeze`) | Breeze's sync validators, plus its async ones (Breeze 3) in `validateModelAsync` and `validate` | Breeze's own messages |
+| `breeze` (TS, from `ideablade-validation/breeze`) | Breeze's sync validators, plus its async ones (Breeze 3) in `validateModelAsync` and `validate` | Breeze's own messages |
 
 ### Range bounds
 
@@ -43,7 +43,7 @@ When the bound is a date, the value is compared as a date. Messages can use `%mi
 ### TypeScript
 
 ```ts
-import { syncValidator, asyncValidator, SyncValidator, withMessage } from '@ideablade/validation';
+import { syncValidator, asyncValidator, SyncValidator, withMessage } from 'ideablade-validation';
 
 // 1. A one-liner
 export const evenValidator = syncValidator('even', (v) => v == null || v % 2 === 0, '%displayName% must be even');

@@ -1,6 +1,6 @@
 # .NET (`IdeaBlade.Validation`)
 
-`IdeaBlade.Validation` is the server-side counterpart of `@ideablade/validation`. It uses the same JSON metadata, the same validator names and messages, and the same expression language (both test suites run [`spec/expression-conformance.json`](../spec/expression-conformance.json)), so a rule behaves the same in the browser and on the server.
+`IdeaBlade.Validation` is the server-side counterpart of `ideablade-validation`. It uses the same JSON metadata, the same validator names and messages, and the same expression language (both test suites run [`spec/expression-conformance.json`](../spec/expression-conformance.json)), so a rule behaves the same in the browser and on the server.
 
 - Targets `netstandard2.0` (.NET Framework 4.6.2+), `net8.0` and `net10.0`.
 - Dependencies: `System.Text.Json`, `Microsoft.Extensions.DependencyInjection.Abstractions`, plus `Microsoft.Bcl.AsyncInterfaces` on netstandard2.0 only.

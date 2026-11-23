@@ -602,7 +602,7 @@ function warnOnce({ modelType, key, errors }: DuplicateErrorKeyInfo): void {
   }
   warned.add(id);
   console.warn(
-    `@ideablade/validation: ${errors.length} errors about one '${modelType}' share the key '${key}' (${errors.map((e) => `"${e.errorMessage}"`).join(', ')}). ` +
+    `ideablade-validation: ${errors.length} errors about one '${modelType}' share the key '${key}' (${errors.map((e) => `"${e.errorMessage}"`).join(', ')}). ` +
       'Errors are told apart by key, so all but one may be hidden. Give the rules different ids or groups, or check which ' +
       'validator reports the key twice. See "Error keys" in docs/metadata.md.',
   );

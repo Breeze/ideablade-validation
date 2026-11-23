@@ -6,7 +6,7 @@ A **data-store agnostic, metadata-driven validation framework** for TypeScript a
 > the install commands below won't work until they are; to try it, build the packages from this
 > repository (`npm pack` in `js/`, `dotnet pack` in `dotnet/src/IdeaBlade.Validation`).  The API
 > may still change before the first release, and so may the name: `IdeaBlade Validation`, the
-> `IdeaBlade.Validation` and `@ideablade/validation` packages, and their namespaces and imports
+> `IdeaBlade.Validation` and `ideablade-validation` packages, and their namespaces and imports
 > aren't settled yet.
 
 The framework works with **any persistence layer**: Breeze, an ORM or REST client, NgRx, MobX, or plain objects. Its core knows nothing about where your data comes from. It ships with a ready-made integration for Breeze, but that integration is built only on the core's public extension points, and any other data layer can be integrated just as easily ([Integrating your data layer](docs/concepts.md#integrating-your-data-layer)).
@@ -32,13 +32,13 @@ Validation should also be independent of how the data is shown. Whenever state c
 
 | Package | Folder | Install |
 |---|---|---|
-| `@ideablade/validation` (npm) | [`js/`](js) | `npm i @ideablade/validation rxjs` |
+| `ideablade-validation` (npm) | [`js/`](js) | `npm i ideablade-validation rxjs` |
 | `IdeaBlade.Validation` (NuGet) | [`dotnet/`](dotnet) | `dotnet add package IdeaBlade.Validation` |
 
 ## Quick start (TypeScript)
 
 ```ts
-import { createValidationService } from '@ideablade/validation';
+import { createValidationService } from 'ideablade-validation';
 
 const service = createValidationService({
   metadata: {

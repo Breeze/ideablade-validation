@@ -62,7 +62,7 @@ The global `breeze` validator in this example comes from the optional [Breeze in
 Point `$schema` at the schema by URL, as in the example above. A URL needs no installed package, so it also works in a project without `node_modules`, such as a .NET-only one, and Visual Studio loads it without the error described below.
 
 - **Pin it to the version you use.** `main` follows the library as it changes; in the URL, replace `main` with the commit or tag your packages were built from, so the editor checks the same rules the packages run. Move it when you update the packages.
-- **The npm package ships the schema too**, at `@ideablade/validation/schema/validation-metadata.schema.json`, and a relative path to it (`../node_modules/@ideablade/validation/schema/validation-metadata.schema.json`) keeps it in step with the installed package without a URL to maintain. But Visual Studio 2026 reports "Error loading schema" in the Output window's JSON pane for such a path, even though it then uses the schema, and the path only works where that `node_modules` is.
+- **The npm package ships the schema too**, at `ideablade-validation/schema/validation-metadata.schema.json`, and a relative path to it (`../node_modules/ideablade-validation/schema/validation-metadata.schema.json`) keeps it in step with the installed package without a URL to maintain. But Visual Studio 2026 reports "Error loading schema" in the Output window's JSON pane for such a path, even though it then uses the schema, and the path only works where that `node_modules` is.
 
 The loaders ignore `$schema`; it is for editors only.
 

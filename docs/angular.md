@@ -1,6 +1,6 @@
 # Angular
 
-`@ideablade/validation/angular` provides standalone providers, injection tokens, signal helpers, reactive-forms validators and template-driven-forms directives. Signal Forms support is in `@ideablade/validation/angular/signal-forms` ([below](#signal-forms)). Tested with Angular 22; it works with Angular 17.1 and later (it needs `makeEnvironmentProviders`, `inject`, signal inputs and `@angular/core/rxjs-interop`). It also needs `@angular/forms`.
+`ideablade-validation/angular` provides standalone providers, injection tokens, signal helpers, reactive-forms validators and template-driven-forms directives. Signal Forms support is in `ideablade-validation/angular/signal-forms` ([below](#signal-forms)). Tested with Angular 22; it works with Angular 17.1 and later (it needs `makeEnvironmentProviders`, `inject`, signal inputs and `@angular/core/rxjs-interop`). It also needs `@angular/forms`.
 
 The library uses no decorators. Everything is functional DI, so it needs no Angular compiler step and is AOT/zoneless friendly. The two directives ship as partial declarations, the format Angular libraries publish, which the Angular CLI links when it builds your app.
 
@@ -9,9 +9,9 @@ The library uses no decorators. Everything is functional DI, so it needs no Angu
 ```ts
 // app.config.ts
 import { ApplicationConfig, inject } from '@angular/core';
-import { provideValidation, provideValidatorContext, provideValidatorFactory } from '@ideablade/validation/angular';
-import { breezeValidator } from '@ideablade/validation/breeze';
-import { asyncValidator } from '@ideablade/validation';
+import { provideValidation, provideValidatorContext, provideValidatorFactory } from 'ideablade-validation/angular';
+import { breezeValidator } from 'ideablade-validation/breeze';
+import { asyncValidator } from 'ideablade-validation';
 import validationMetadata from './validation.metadata.json';
 
 export const appConfig: ApplicationConfig = {
@@ -144,13 +144,13 @@ readonly errors = validationErrors(() => (this.changes(), this.entity), 'Custome
 
 ## Signal Forms
 
-`validateWithMetadata` from `@ideablade/validation/angular/signal-forms` applies the metadata rules of a model type to a Signal Forms form (`@angular/forms/signals`). Signal Forms needs Angular 22, so it has its own entry point; the rest of the Angular integration keeps working with Angular 17.1 and later.
+`validateWithMetadata` from `ideablade-validation/angular/signal-forms` applies the metadata rules of a model type to a Signal Forms form (`@angular/forms/signals`). Signal Forms needs Angular 22, so it has its own entry point; the rest of the Angular integration keeps working with Angular 17.1 and later.
 
 Call it in the schema function of `form()`, which runs in an injection context:
 
 ```ts
 import { form, FormField } from '@angular/forms/signals';
-import { validateWithMetadata } from '@ideablade/validation/angular/signal-forms';
+import { validateWithMetadata } from 'ideablade-validation/angular/signal-forms';
 
 @Component({
   imports: [FormField],

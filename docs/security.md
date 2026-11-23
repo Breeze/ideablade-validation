@@ -1,6 +1,6 @@
 # Security: why expressions don't use `eval`
 
-Validation metadata contains expressions: validator `condition`s, model `condition`s and the `expression` validator. The obvious way to run a JavaScript expression stored as a string is to compile it with `eval` or the `Function` constructor, or on a server with an embedded JavaScript engine. This document explains why `@ideablade/validation` and `IdeaBlade.Validation` don't do that, and what they do instead.
+Validation metadata contains expressions: validator `condition`s, model `condition`s and the `expression` validator. The obvious way to run a JavaScript expression stored as a string is to compile it with `eval` or the `Function` constructor, or on a server with an embedded JavaScript engine. This document explains why `ideablade-validation` and `IdeaBlade.Validation` don't do that, and what they do instead.
 
 ## The problem with `eval`
 

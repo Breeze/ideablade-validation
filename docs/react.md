@@ -1,12 +1,12 @@
 # React
 
-`@ideablade/validation/react` provides a context provider and hooks. It works with React 18 and 19, and your components never handle Observables directly.
+`ideablade-validation/react` provides a context provider and hooks. It works with React 18 and 19, and your components never handle Observables directly.
 
 ## Setup
 
 ```tsx
-import { ValidationProvider } from '@ideablade/validation/react';
-import { breezeValidator } from '@ideablade/validation/breeze';
+import { ValidationProvider } from 'ideablade-validation/react';
+import { breezeValidator } from 'ideablade-validation/breeze';
 import metadata from './validation.metadata.json';
 
 root.render(
