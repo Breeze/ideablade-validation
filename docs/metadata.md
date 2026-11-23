@@ -66,7 +66,7 @@ Point `$schema` at the schema by URL, as in the example above. A URL needs no in
 
 The loaders ignore `$schema`; it is for editors only.
 
-> **In TempHire:** [`validation.metadata.json`](https://github.com/Breeze/temphire.server/blob/main/TempHire.Server/Validation/validation.metadata.json) links the schema by URL, pinned to the commit its preview packages were built from. The server is a submodule of both clients and is also opened on its own, so a path into a client's `node_modules` would not always lead anywhere.
+> **In TempHire:** [`validation.metadata.json`](https://github.com/Breeze/temphire.server/blob/main/TempHire.Server/Validation/validation.metadata.json) links the schema by URL, pinned to the commit of the library version it uses. The server is a submodule of both clients and is also opened on its own, so a path into a client's `node_modules` would not always lead anywhere.
 
 ## Top level
 
