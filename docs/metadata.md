@@ -68,6 +68,15 @@ The loaders ignore `$schema`; it is for editors only.
 
 > **In TempHire:** [`validation.metadata.json`](https://github.com/Breeze/temphire.server/blob/main/TempHire.Server/Validation/validation.metadata.json) links the schema by URL, pinned to the commit of the library version it uses. The server is a submodule of both clients and is also opened on its own, so a path into a client's `node_modules` would not always lead anywhere.
 
+## Editing metadata in the editor
+
+[IdeaBlade Validation Editor](https://github.com/Breeze/ideablade-validation-editor) is a desktop app (Electron) for writing this metadata through forms instead of by hand. It's an early version: run it from source, or build its Windows installer.
+
+- **Where the metadata lives:** JSON files; a `ModelValidationMetadataMap` object in a TypeScript file, such as TempHire's `client-validation-metadata.ts`; or a JSON string in a C# file, for `AddMetadataJson`. Several files open side by side, and the editor checks them together, as the library merges several metadata maps. Saving a TS or C# file rewrites only the metadata object or string.
+- **Checks as you type:** the schema, and this library itself: unknown validator names, expressions that don't parse, `from` and `extends` that lead nowhere, and [error keys](#error-keys) that two rules would share.
+- **Real names instead of free text:** it reads model types and properties from Breeze metadata and from TypeScript and C# view models and DTOs, and your application's own validators (with the context settings they read) and expression functions. It offers them in the forms and in code completion for [expressions](expressions.md), and warns about names it doesn't know.
+- **Try it:** validate a sample object against the rules as they are.
+
 ## Top level
 
 | Key | Meaning |
