@@ -26,6 +26,7 @@ Validation should also be independent of how the data is shown. Whenever state c
 - **No `eval`.** Conditions and expressions run in a safe, sandboxed expression interpreter that works under a strict CSP. One grammar is shared by both platforms.
 - First-class **Angular** (standalone providers, signals, reactive, template-driven and Signal Forms) and **React** (hooks) integrations, both optional peer dependencies.
 - **Any data layer.** A ready-made **Breeze 3** integration ships with the package (an entity store, a model type resolver, a rule source and a validator), also an optional peer dependency. Any other persistence layer plugs into the same public extension points.
+- A **[metadata editor](#metadata-editor)**, a desktop app for writing the rules through forms, with the library's own checks.
 
 | Package | Folder | Install |
 |---|---|---|
@@ -94,6 +95,11 @@ var errors = validationService.ValidateModel(customer);
 | [Security](docs/security.md) | Why expressions run in a safe interpreter instead of `eval` |
 | [Angular](docs/angular.md) · [React](docs/react.md) · [.NET](docs/dotnet.md) | Integrations |
 | [Integrating your data layer](docs/concepts.md#integrating-your-data-layer) · [Breeze](docs/breeze.md) | Connecting any persistence layer, and the ready-made Breeze integration |
+| [Metadata editor](https://github.com/Breeze/ideablade-validation-editor) | A desktop app for editing the metadata ([below](#metadata-editor)) |
+
+## Metadata editor
+
+[IdeaBlade Validation Editor](https://github.com/Breeze/ideablade-validation-editor) is a desktop app (Electron and Angular) for writing the metadata through forms instead of by hand. It opens metadata in JSON files, in TypeScript (a `ModelValidationMetadataMap`) and in C# (a JSON string for `AddMetadataJson`), several side by side, and saves each in its own format. As you edit, it checks the rules with the schema and with this library itself, and it offers model types, properties, your application's own validators and expression functions from Breeze metadata and TypeScript and C# files, in the forms and in code completion for expressions. See [Editing metadata in the editor](docs/metadata.md#editing-metadata-in-the-editor). It's an early version: run it from source, or build its Windows installer.
 
 ## Example app: TempHire
 
