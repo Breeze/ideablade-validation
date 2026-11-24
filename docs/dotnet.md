@@ -202,7 +202,7 @@ The interpreter is the same as in TS ([expressions.md](expressions.md)). It read
 - **Numbers** become `double` inside expressions. `decimal` values beyond double precision lose precision, so compare money with a tolerance or in a custom validator.
 - **Enums** become their names and **Guids** become strings: `model.status === 'Active'`.
 - **Dates:** `DateTime` behaves like a JS `Date`. Relational operators compare by time, and `===` between two date objects is false, as in JS; use `getTime()`. `DateTimeOffset` is converted to UTC.
-- **Regex literals** use .NET's ECMAScript mode where possible, with a **1-second match timeout**.
+- **Regular expressions** (regex literals and the `pattern` validator) use .NET's ECMAScript mode where possible, with a **1-second match timeout**. A pattern that mode can't parse, such as one with `\p{L}`, falls back to .NET's default mode, where `\d` and `\w` also match non-ASCII digits and letters. The `i`, `m` and `s` flags work as in JavaScript, `g` works in `match`, `replace` and `replaceAll`, and `y` and `u` are ignored. So with `u`, Unicode categories (`\p{L}`, `\p{Lu}`, `\P{L}`) work on both sides, but `\u{1F600}` and `\p{Script=Greek}` throw on .NET, and only JavaScript matches a character outside the Basic Multilingual Plane, such as an emoji, with `.` or `[😀]` (.NET sees its two UTF-16 halves). Write `\p{…}` only with `u`: without it, JavaScript reads `\p{L}` as the text `p{L}`.
 - **Limits:** step budget (100,000), call depth (64) and parse depth (200).
 - In model conditions, the variable holding all entities is `entities`. On the client it's `entityInfos`.
 

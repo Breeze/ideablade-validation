@@ -129,7 +129,7 @@
             "flags": {
               "type": "string",
               "pattern": "^[dgimsuvy]*$",
-              "description": "The 'pattern' validator's regular expression flags, for a pattern given as a plain string ('/source/flags' brings its own and ignores this). 'i' (ignore case), 'm' (multiline), 's' (dotAll) and 'u' (unicode) work the same on the client and the server. 'g' (global) has no effect: the validator starts every test at the beginning of the value. Avoid 'y' (sticky): JavaScript then only matches at the start of the value, but .NET ignores it, so client and server disagree; start the pattern with '^' instead."
+              "description": "The 'pattern' validator's regular expression flags, for a pattern given as a plain string ('/source/flags' brings its own and ignores this). 'i' (ignore case), 'm' (multiline) and 's' (dotAll) work the same on the client and the server. .NET ignores 'u' (unicode): Unicode categories such as \\p{L} work on both, but \\u{...} and \\p{Script=...} fail on the server, and only JavaScript matches an emoji (or another character outside the Basic Multilingual Plane) as one character with '.' or a character class. Write \\p{...} only with 'u': without it, JavaScript reads it as plain text. 'g' (global) has no effect: the validator starts every test at the beginning of the value. Avoid 'y' (sticky): JavaScript then only matches at the start of the value, but .NET ignores it, so client and server disagree; start the pattern with '^' instead."
             },
             "minValue": { "type": ["number", "string"] },
             "maxValue": { "type": ["number", "string"] },
