@@ -9,7 +9,7 @@ All of these are registered by default (`defaultValidators` in TS, `DefaultValid
 | `required` | `trim` (whitespace-only fails) | `%displayName% is required` |
 | `minLength` | `minLength` | `%displayName% must be at least %minLength% characters` |
 | `maxLength` | `maxLength` | `%displayName% must be at most %maxLength% characters` |
-| `pattern` | `expression` (pattern string, `"/src/flags"` or RegExp), `flags` (for a pattern string: `i`, `m`, `s` and `u` work the same on client and server; avoid `g` and `y`, which make JavaScript's `test()` stateful) | `%displayName% '%value%' does not match the required format` |
+| `pattern` | `expression` (pattern string, `"/src/flags"` or RegExp), `flags` (for a pattern string: `i`, `m`, `s` and `u` work the same on client and server; `g` has no effect, since each test starts at the beginning of the value; avoid `y`, which makes JavaScript match only at the start of the value while .NET ignores it, and start the pattern with `^` instead) | `%displayName% '%value%' does not match the required format` |
 | `email` | | `%displayName% is not a valid email address` |
 | `zipCode` | | US ZIP or ZIP+4 |
 | `phone` | | 10-digit US phone; punctuation allowed |

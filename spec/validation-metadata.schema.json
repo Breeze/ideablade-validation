@@ -129,7 +129,7 @@
             "flags": {
               "type": "string",
               "pattern": "^[dgimsuvy]*$",
-              "description": "The 'pattern' validator's regular expression flags, for a pattern given as a plain string ('/source/flags' brings its own and ignores this). 'i' (ignore case), 'm' (multiline), 's' (dotAll) and 'u' (unicode) work the same on the client and the server. Avoid 'g' and 'y': in JavaScript they make test() remember where it stopped, so a validator that runs twice can alternate between passing and failing."
+              "description": "The 'pattern' validator's regular expression flags, for a pattern given as a plain string ('/source/flags' brings its own and ignores this). 'i' (ignore case), 'm' (multiline), 's' (dotAll) and 'u' (unicode) work the same on the client and the server. 'g' (global) has no effect: the validator starts every test at the beginning of the value. Avoid 'y' (sticky): JavaScript then only matches at the start of the value, but .NET ignores it, so client and server disagree; start the pattern with '^' instead."
             },
             "minValue": { "type": ["number", "string"] },
             "maxValue": { "type": ["number", "string"] },
