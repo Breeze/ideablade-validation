@@ -122,7 +122,15 @@
           "properties": {
             "messageTemplate": { "type": "string", "description": "Message with %placeholders%, e.g. '%displayName% is required'." },
             "displayName": { "type": "string" },
-            "expression": { "type": "string" },
+            "expression": {
+              "type": "string",
+              "description": "The 'expression' validator's expression. For 'pattern', the regular expression: a pattern string such as '^\\d{5}$' (with 'flags'), or '/source/flags' such as '/^[a-z]+$/i'."
+            },
+            "flags": {
+              "type": "string",
+              "pattern": "^[dgimsuvy]*$",
+              "description": "The 'pattern' validator's regular expression flags, for a pattern given as a plain string ('/source/flags' brings its own and ignores this). 'i' (ignore case), 'm' (multiline), 's' (dotAll) and 'u' (unicode) work the same on the client and the server. Avoid 'g' and 'y': in JavaScript they make test() remember where it stopped, so a validator that runs twice can alternate between passing and failing."
+            },
             "minValue": { "type": ["number", "string"] },
             "maxValue": { "type": ["number", "string"] },
             "minLength": { "type": "integer" },
