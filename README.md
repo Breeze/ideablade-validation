@@ -1,6 +1,6 @@
 # IdeaBlade Validation
 
-A **data-store agnostic, metadata-driven validation framework** for TypeScript and .NET.
+A **cross-platform rules engine for validation**, in TypeScript and .NET. Define the rules once, in portable JSON metadata, and validate live data with them continuously, on the client and on the server.
 
 > **Version 0.1.**  The packages are published: [`ideablade-validation`](https://www.npmjs.com/package/ideablade-validation)
 > on npm and [`IdeaBlade.Validation`](https://www.nuget.org/packages/IdeaBlade.Validation) on NuGet.
@@ -15,6 +15,23 @@ Many applications tie validation to the forms in their UI. Each form declares it
 We think validation belongs to the data, not to the UI. The rules for each type live in one central place, a JSON metadata structure, and the client and the server share them. Much of that metadata doesn't need to be written by hand at all. Data frameworks such as Breeze already derive validation rules from the server model and the database schema. If a column is `varchar(255)`, the 255-character limit should flow through the application as metadata, not be hardcoded as a validator in some form.
 
 Validation should also be independent of how the data is shown. Whenever state changes, it is validated, and the UI simply surfaces the errors wherever they're relevant. That may be a form, but it may just as well be a dashboard, a list or a summary page that has no form at all.
+
+So instead of scattering rules across forms, or writing them twice, once for the front end and again for the back end, IdeaBlade Validation keeps them in one place, as data. It is a rules engine for validation that doesn't care about your data layer: sync and async rules, a safe expression language that works under a strict Content Security Policy, and continuous validation in both TypeScript and .NET.
+
+### Compared with Zod and other schema libraries
+
+[Zod](https://zod.dev), Yup, Valibot and similar libraries are excellent at what they are built for: describing the shape of a value in TypeScript code, parsing untrusted input against it at an API boundary, and inferring TypeScript types from it. IdeaBlade Validation solves a different problem: the rules of your domain, shared across a whole application stack.
+
+| | Schema libraries such as Zod | IdeaBlade Validation |
+|---|---|---|
+| Where the rules live | TypeScript code | JSON metadata: data, which a server can generate or serve, and the client can load at runtime |
+| Platforms | TypeScript; a .NET server needs its own copy of the rules | TypeScript and .NET, running the same metadata |
+| What is validated | A value, when you parse it | Live objects as they change, up to whole entity stores, including rules across entities ("a customer has at least one address") |
+| Conditions and expressions | Code you write in the schema | A safe expression language in the metadata, with no `eval` |
+| Result | A parsed, typed value, or an error | Errors per property and per model, which the Angular and React integrations show in forms, with [error visibility](docs/concepts.md#showing-errors-error-visibility) so a new record isn't all red at once |
+| TypeScript types | Inferred from the schema | Not generated: your models keep their own types |
+
+Use a schema library to parse and type untrusted input. Use IdeaBlade Validation for the business rules your data has to meet wherever it is edited, in the browser and on the server. The two work well side by side.
 
 ## Features
 
