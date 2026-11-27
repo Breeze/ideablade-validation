@@ -40,7 +40,10 @@ namespace IdeaBlade.Validation.Validators
         }
     }
 
-    /// <summary><c>required</c> — fails for null, '' and empty collections; with <c>trim: true</c> whitespace-only strings fail too.</summary>
+    /// <summary>
+    /// <c>required</c> — fails for null, '' and empty collections; with <c>trim: true</c> whitespace-only strings fail too.
+    /// With <c>allowEmptyString: true</c> any string passes, '' included (null still fails).
+    /// </summary>
     public class RequiredValidator : Validator
     {
         public const string DefaultMessageTemplate = "%displayName% is required";
@@ -52,7 +55,7 @@ namespace IdeaBlade.Validation.Validators
 
         protected override bool ValidateCore(object? value, ValidatorFunctionContext context)
         {
-            if (value is string s) return (context.GetValue<bool>("trim") ? s.Trim() : s).Length > 0;
+            if (value is string s) return context.GetValue<bool>("allowEmptyString") || (context.GetValue<bool>("trim") ? s.Trim() : s).Length > 0;
             if (value is ICollection c) return c.Count > 0;
             if (JsRuntime.IsArrayLike(value)) return JsRuntime.ToList(value).Count > 0;
             return value != null;

@@ -121,6 +121,22 @@ public class ValidationServiceTests
     }
 
     [Fact]
+    public void RequiredTrimAndAllowEmptyString()
+    {
+        var service = CreateService(ModelValidationMetadataMap.Parse(@"{""X"": {""properties"": {
+            ""plain"": {""validators"": [""required""]},
+            ""trimmed"": {""validators"": [{""name"": ""required"", ""context"": {""trim"": true}}]},
+            ""empty"": {""validators"": [{""name"": ""required"", ""context"": {""allowEmptyString"": true}}]},
+            ""both"": {""validators"": [{""name"": ""required"", ""context"": {""allowEmptyString"": true, ""trim"": true}}]}}}}"));
+        string[] Failing(Dictionary<string, object?> model) =>
+            service.ValidateModel(model, "X").Select(e => e.MetadataPropertyNames.Single()).ToArray();
+        Assert.Equal(new[] { "plain", "trimmed" }, Failing(new() { ["plain"] = "", ["trimmed"] = " ", ["empty"] = "", ["both"] = " " }));
+        Assert.Empty(Failing(new() { ["plain"] = " ", ["trimmed"] = "a", ["empty"] = " ", ["both"] = "" }));
+        Assert.Equal(new[] { "plain", "trimmed", "empty", "both" }, Failing(new()));
+        Assert.Equal(new[] { "empty" }, Failing(new() { ["plain"] = "a", ["trimmed"] = "a", ["empty"] = new List<object>(), ["both"] = "a" }));
+    }
+
+    [Fact]
     public void MergesMultipleMaps()
     {
         var metadata = new ValidationMetadata(new[]
