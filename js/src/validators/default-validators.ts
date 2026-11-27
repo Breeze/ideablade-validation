@@ -12,7 +12,10 @@ function isEmpty(value: unknown): boolean {
   return value == null || value === '' || (Array.isArray(value) && value.length === 0);
 }
 
-/** `required` — fails for null, undefined, '' and empty arrays. With `context.trim: true` whitespace-only strings fail too. */
+/**
+ * `required` — fails for null, undefined, '' and empty arrays. With `context.trim: true` whitespace-only strings fail too.
+ * With `context.allowEmptyString: true` any string passes, '' included (null and undefined still fail).
+ */
 export class RequiredValidator extends SyncValidator {
   static readonly messageTemplate = '%displayName% is required';
 
@@ -25,7 +28,7 @@ export class RequiredValidator extends SyncValidator {
           return value.length > 0;
         }
         if (typeof value === 'string') {
-          return (ctx.trim ? value.trim() : value) !== '';
+          return ctx.allowEmptyString === true || (ctx.trim ? value.trim() : value) !== '';
         }
         return value != null;
       },

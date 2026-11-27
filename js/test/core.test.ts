@@ -271,6 +271,26 @@ describe('ValidationService (sync)', () => {
     expect(() => s.validateModelSync({}, 'X')).toThrow(/Condition 'model.a.b' failed/);
   });
 
+  it('required: trim and allowEmptyString', () => {
+    const s = createValidationService({
+      metadata: {
+        X: {
+          properties: {
+            plain: { validators: ['required'] },
+            trimmed: { validators: [{ name: 'required', context: { trim: true } }] },
+            empty: { validators: [{ name: 'required', context: { allowEmptyString: true } }] },
+            both: { validators: [{ name: 'required', context: { allowEmptyString: true, trim: true } }] },
+          },
+        },
+      },
+    });
+    const failing = (model: object) => s.validateModelSync(model, 'X').map((e) => e.propertyNames[0]);
+    expect(failing({ plain: '', trimmed: ' ', empty: '', both: ' ' })).toEqual(['plain', 'trimmed']);
+    expect(failing({ plain: ' ', trimmed: 'a', empty: ' ', both: '' })).toEqual([]);
+    expect(failing({})).toEqual(['plain', 'trimmed', 'empty', 'both']);
+    expect(failing({ plain: 'a', trimmed: 'a', empty: [], both: 'a' })).toEqual(['empty']);
+  });
+
   it('merges multiple metadata maps for the same model type', () => {
     const s = createValidationService({
       metadata: [{ X: { properties: { a: { required: true } } } }, [{ X: { properties: { a: { displayName: 'A' }, b: { required: true } } } }]],
