@@ -2,7 +2,7 @@
 
 A **cross-platform rules engine for validation**, in TypeScript and .NET. Define the rules once, in portable JSON metadata, and validate live data with them continuously, on the client and on the server.
 
-> **Version 0.1.**  The packages are published: [`ideablade-validation`](https://www.npmjs.com/package/ideablade-validation)
+> **Version 0.1.1** ([release notes](https://github.com/Breeze/ideablade-validation/releases/tag/v0.1.1)).  The packages are published: [`ideablade-validation`](https://www.npmjs.com/package/ideablade-validation)
 > on npm and [`IdeaBlade.Validation`](https://www.nuget.org/packages/IdeaBlade.Validation) on NuGet.
 > As with any 0.x version, the API may still change between minor versions.
 
